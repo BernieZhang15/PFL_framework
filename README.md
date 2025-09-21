@@ -2,7 +2,8 @@
 
 This repository provides the **source code** for the paper:
 
-> *Personalizing Low-rank Bayesian Neural Networks via Federated Learning*  
+> *Personalizing Low-rank Bayesian Neural Networks via Federated Learning*
+> Accepted at **AISTATS 2025**
 
 ---
 
