@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="WebServers">
+    <option name="servers">
+      <webServer id="808b32ce-1522-4f81-98dc-a57d68088b6a" name="Glasgow">
+        <fileTransfer accessType="SFTP" host="coppay.dcs.gla.ac.uk" port="22" sshConfigId="46d1a389-145c-4d6c-9d15-1cd2f1c63737" sshConfig="boning@coppay.dcs.gla.ac.uk:22 password">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" keepAliveTimeout="0" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+        </fileTransfer>
+      </webServer>
+    </option>
+  </component>
+</project>
