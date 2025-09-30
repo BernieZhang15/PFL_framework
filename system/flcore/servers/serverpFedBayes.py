@@ -2,7 +2,7 @@ import copy
 import torch
 import torch.nn.functional as F
 from flcore.servers.serverbase import Server
-from flcore.clients.clientpFedBayes_ResNet import clientpFedBayes
+from flcore.clients.clientpFedBayes import clientpFedBayes
 
 
 class pFedBayes(Server):

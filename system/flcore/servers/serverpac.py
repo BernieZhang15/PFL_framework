@@ -7,7 +7,7 @@ import time
 import numpy as np
 import random
 import torch
-import cvxpy as cvx
+# import cvxpy as cvx
 import copy
 
 
@@ -235,12 +235,13 @@ def solve_quadratic(num_users, Vars, Hs):
         alpha = 0
         eps = 1e-3
         if np.all(np.linalg.eigvals(p_matrix)>=0):
-            alphav = cvx.Variable(num_users)
-            obj = cvx.Minimize(cvx.quad_form(alphav, p_matrix))
-            prob = cvx.Problem(obj, [cvx.sum(alphav) == 1.0, alphav >= 0])
-            prob.solve()
-            alpha = alphav.value
-            alpha = [(i)*(i>eps) for i in alpha] # zero-out small weights (<eps)
+            # alphav = cvx.Variable(num_users)
+            # obj = cvx.Minimize(cvx.quad_form(alphav, p_matrix))
+            # prob = cvx.Problem(obj, [cvx.sum(alphav) == 1.0, alphav >= 0])
+            # prob.solve()
+            # alpha = alphav.value
+            # alpha = [(i)*(i>eps) for i in alpha] # zero-out small weights (<eps)
+            pass
         else:
             alpha = None # if no solution for the optimization problem, use local classifier only
         

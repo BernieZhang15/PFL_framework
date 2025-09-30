@@ -132,7 +132,7 @@ def run(args):
 
         elif model_str == "Fourier_bayes_cnn":
             if "Cifar10" in args.dataset:
-                args.model = FTFedAvgCNN(num_classes=args.num_classes, ens=args.num_ensemble).to(args.device)
+                args.model = FTFedAvgCNN(num_classes=args.num_classes, ens_num=args.num_ensemble).to(args.device)
             elif "mnist" in args.dataset:
                 args.model = LRFedAvgCNN(in_features=1, num_classes=args.num_classes, ens=args.num_ensemble, dim=1152).to(args.device)
 
@@ -383,7 +383,7 @@ if __name__ == "__main__":
     parser.add_argument('-seed', "--seed", type=int, default=573)
     parser.add_argument('-dev', "--device", type=str, default="cuda", choices=["cpu", "cuda"])
     parser.add_argument('-did', "--device_id", type=str, default="1")
-    parser.add_argument('-data', "--dataset", type=str, default=dataset[9])
+    parser.add_argument('-data', "--dataset", type=str, default=dataset[0])
     parser.add_argument('-nb', "--num_classes", type=int, default=10)
     parser.add_argument('-m', "--model", type=str, default=algo[a_num][0])
     parser.add_argument('-algo', "--algorithm", type=str, default=algo[a_num][1])

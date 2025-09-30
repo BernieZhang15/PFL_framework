@@ -1,0 +1,10 @@
+*.npz
+*.pyc
+*.jpeg
+*.JPEG
+*.JEPG
+*.json
+*.JSON
+*.txt
+*.TXT
+events.out.tfevents*

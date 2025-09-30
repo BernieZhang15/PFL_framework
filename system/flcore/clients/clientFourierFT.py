@@ -1,6 +1,6 @@
 import time
 import torch
-from torch.nn import nn
+import torch.nn as nn
 import torch.nn.functional as F
 from flcore.clients.clientbase import Client
 
@@ -22,7 +22,7 @@ class clientFourierFT(Client):
                 self.optimizer.zero_grad()
 
                 output, kl = self.model(x)
-
+                output = torch.mean(F.softmax(output, dim=2), dim=0)
                 loss = self.loss(output, y)
 
                 spec_loss = 0.0
