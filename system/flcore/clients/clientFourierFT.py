@@ -57,7 +57,7 @@ class clientFourierFT(Client):
         else:
             raise ValueError("mode must be 'low' or 'high'")
 
-        reg_loss = (W_fft[mask].abs() ** 2).sum() * lambd
+        reg_loss = (W_fft[mask].abs() ** 2).mean() * lambd
 
         return reg_loss
 
