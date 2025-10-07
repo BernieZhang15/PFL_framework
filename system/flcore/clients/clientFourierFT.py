@@ -56,8 +56,10 @@ class clientFourierFT(Client):
             mask = dist >= radius
         else:
             raise ValueError("mode must be 'low' or 'high'")
+        power = W_fft.abs() ** 2
+        # power = torch.nan_to_num(power, nan=0.0, posinf=0.0, neginf=0.0)
 
-        reg_loss = (W_fft[mask].abs() ** 2).mean() * lambd
+        reg_loss = (power[mask]).mean() * lambd
 
         return reg_loss
 
