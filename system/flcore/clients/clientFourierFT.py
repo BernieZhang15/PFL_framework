@@ -16,24 +16,38 @@ class clientFourierFT(Client):
         self.model.train()
 
         for step in range(self.local_epochs):
-            for i, (x, y) in enumerate(train_loader):
-                x, y =  x.to(self.device), y.to(self.device)
+            x, y = self.get_next_batch(train_loader)
+            self.optimizer.zero_grad()
+            output, kl = self.model(x)
+            output = torch.mean(F.softmax(output, dim=2), dim=0)
+            loss = self.loss(output, y)
+            spec_loss = 0.0
+            for name, module in self.model.named_modules():
+                if isinstance(module, nn.Linear):
+                    spec_loss += self.spectrum_regularization(module.weight, mode='high', radius=0.3, lambd=1e-3)
 
-                self.optimizer.zero_grad()
+            loss += spec_loss + kl / self.train_samples
 
-                output, kl = self.model(x)
-                output = torch.mean(F.softmax(output, dim=2), dim=0)
-                loss = self.loss(output, y)
+            loss.backward()
+            self.optimizer.step()
+            # for i, (x, y) in enumerate(train_loader):
+            #     x, y =  x.to(self.device), y.to(self.device)
 
-                spec_loss = 0.0
-                for name, module in self.model.named_modules():
-                    if isinstance(module, nn.Linear):
-                        spec_loss += self.spectrum_regularization(module.weight, mode='high', radius=0.3, lambd=1e-3)
+            #     self.optimizer.zero_grad()
 
-                loss += spec_loss + kl / self.train_samples
+            #     output, kl = self.model(x)
+            #     output = torch.mean(F.softmax(output, dim=2), dim=0)
+            #     loss = self.loss(output, y)
 
-                loss.backward()
-                self.optimizer.step()
+            #     spec_loss = 0.0
+            #     for name, module in self.model.named_modules():
+            #         if isinstance(module, nn.Linear):
+            #             spec_loss += self.spectrum_regularization(module.weight, mode='high', radius=0.3, lambd=1e-3)
+
+                # loss += spec_loss + kl / self.train_samples
+
+                # loss.backward()
+                # self.optimizer.step()
 
         if self.learning_rate_decay:
             self.learning_rate_scheduler.step()
