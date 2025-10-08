@@ -4,8 +4,7 @@ import h5py
 import torch
 import numpy as np
 from flcore.servers.serverbase import Server
-# from flcore.clients.clientMetabayes import clientMetaBAYES
-from flcore.clients.clientMetabayes_joint import clientMetaBAYES
+from flcore.clients.clientMetabayes import clientMetaBAYES
 from torchmetrics.functional.classification import multiclass_calibration_error
 
 

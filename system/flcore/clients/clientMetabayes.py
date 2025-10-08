@@ -138,7 +138,7 @@ class clientMetaBAYES(Client):
 
         return eval_acc, eval_num, y_prob, y_true
 
-    def test_metrics(self):
+    def test_metrics(self, batch_size=None):
         # Local adaption
         trainloader = self.load_train_data()
         self.lr_matrix = self.update_lr_matrices(trainloader, update_step=40, learning_rate=0.005)
