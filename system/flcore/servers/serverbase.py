@@ -246,6 +246,8 @@ class Server(object):
 
         self.writer.add_scalar("Train_loss", train_loss, global_round)
         self.writer.add_scalar("Test_acc", test_acc, global_round)
+        self.writer.add_scalar("Test_ece", test_ece, global_round)
+        self.writer.add_scalar("Test_mce", test_mce, global_round)
 
         print("Averaged Train Loss: {:.4f}".format(train_loss))
         print("Averaged Test Accuracy: {:.4f}".format(test_acc))
