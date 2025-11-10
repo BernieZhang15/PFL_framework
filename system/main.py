@@ -382,7 +382,7 @@ if __name__ == "__main__":
     # general
     parser.add_argument('-seed', "--seed", type=int, default=573)
     parser.add_argument('-dev', "--device", type=str, default="cuda", choices=["cpu", "cuda"])
-    parser.add_argument('-did', "--device_id", type=str, default="1")
+    parser.add_argument('-did', "--device_id", type=str, default="0")
     parser.add_argument('-data', "--dataset", type=str, default=dataset[0])
     parser.add_argument('-nb', "--num_classes", type=int, default=10)
     parser.add_argument('-m', "--model", type=str, default=algo[a_num][0])
@@ -414,7 +414,7 @@ if __name__ == "__main__":
     parser.add_argument('-ens', "--num_ensemble", type=int, default=4)
 
     # pFedMetaBayes
-    parser.add_argument('-rank', "--rank", type=int, default=12)
+    parser.add_argument('-rank', "--rank", type=int, default=4)
     parser.add_argument('-nurs', "--num_update_rs", type=int, default=15)
     parser.add_argument('-temp', "--temperature", type=int, default=1)
     parser.add_argument('-ar', "--adaptive_rank", type=bool, default=False)

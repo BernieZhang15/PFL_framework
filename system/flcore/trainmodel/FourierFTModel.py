@@ -4,9 +4,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 warnings.filterwarnings("ignore", message="Can't initialize NVML")
 
-def calculate_kl(mu_q, sig_q, mu_p, sig_p):
-    kl = 0.5 * (2 * torch.log(sig_p / sig_q) - 1 + (sig_q / sig_p).pow(2) + ((mu_p - mu_q) / sig_p).pow(2)).sum()
-    return kl
+# def calculate_kl(mu_p, sig_p, mu_q, sig_q):
+#     kl = 0.5 * (2 * torch.log(sig_p / sig_q) - 1 + (sig_q / sig_p).pow(2) + ((mu_p - mu_q) / sig_p).pow(2)).sum()
+#     return kl
+def calculate_kl(mu_p, sig_p, mu_q, sig_q):
+    kl = 0.5 * (2 * torch.log(sig_p / sig_q) - 1 + (sig_q / sig_p).pow(2) + ((mu_q - mu_p) / sig_p).pow(2)).sum()
+    return kl 
 
 class FourierFTLayer(nn.Module):
     def __init__(self, base_layer, n_frequency, scaling, init_weights, random_loc_seed, **kwargs) -> None:
@@ -75,7 +78,7 @@ class FourierFTLayer(nn.Module):
         return delta_weight
 
     def kl_loss(self):
-        self.spectrum_sigma = torch.log1p(torch.exp(self.spectrum_sigma))
+        self.spectrum_sigma = torch.log1p(torch.exp(self.spectrum_rho))
         kl = calculate_kl(self.prior_mu, self.prior_sigma, self.spectrum_mu, self.spectrum_sigma)
         return kl
 
@@ -86,7 +89,7 @@ class FourierFTLinear(FourierFTLayer):
 
     def forward(self, data_input: torch.Tensor) -> torch.Tensor:
 
-        delta_stack = torch.stack([self.get_delta_weight() * self.scaling for _ in range(self.ens_num)], dim=0)
+        delta_stack = torch.stack([self.get_delta_weight() for _ in range(self.ens_num)], dim=0)
         base_weight = self.base_layer.weight.unsqueeze(0).expand(self.ens_num, -1, -1)
 
         agg_weight = delta_stack + base_weight
@@ -128,9 +131,9 @@ class FTFedAvgCNN(nn.Module):
         fc2 = nn.Linear(512, 256, bias=True)
         fc3 = nn.Linear(256, num_classes, bias=True)
 
-        self.fc1 = FourierFTLinear(fc1, n_frequency=1000, scaling=150, ens_num=ens_num, freq_bias=True, fc=600, bandwidth=200)
-        self.fc2 = FourierFTLinear(fc2, n_frequency=1000, scaling=150, ens_num=ens_num, freq_bias=True, fc=200, bandwidth=100)
-        self.fc3 = FourierFTLinear(fc3, n_frequency=200, scaling=10, ens_num=ens_num, freq_bias=True, fc=80, bandwidth=40)
+        self.fc1 = FourierFTLinear(fc1, n_frequency=1000, scaling=6000, ens_num=ens_num, freq_bias=True, fc=600, bandwidth=250)
+        self.fc2 = FourierFTLinear(fc2, n_frequency=1000, scaling=6000, ens_num=ens_num, freq_bias=True, fc=200, bandwidth=150)
+        self.fc3 = FourierFTLinear(fc3, n_frequency=200, scaling=600, ens_num=ens_num, freq_bias=True, fc=80, bandwidth=60)
 
 
     def forward(self, data_input: torch.Tensor) -> torch.Tensor:
