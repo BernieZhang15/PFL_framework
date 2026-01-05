@@ -24,9 +24,11 @@ class clientFourierFT(Client):
             spec_loss = 0.0
             for name, module in self.model.named_modules():
                 if isinstance(module, nn.Linear):
-                    spec_loss += self.spectrum_regularization(module.weight, mode='high', radius=0.1, lambd=1e-3)
-
-            loss += spec_loss + kl / self.train_samples
+                    spec_loss += self.spectrum_regularization(module.weight, mode='high', radius=0.7, lambd=1e-3)
+            # print(f"Step {step}: Spec Loss={spec_loss.item():.4f}")
+            lambda_kl = 0.9
+            loss += 0.5 *spec_loss + lambda_kl * kl / self.train_samples
+            # print(f"CE={loss.item():.4f}, KLps={(kl/self.train_samples).item():.4f}")
 
             loss.backward()
             self.optimizer.step()

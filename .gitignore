@@ -10,3 +10,4 @@
 events.out.tfevents*
 *.h5
 *.pt
+*.log

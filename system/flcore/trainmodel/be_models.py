@@ -227,12 +227,27 @@ class ER1FedAvgCNN(nn.Module):
     def __init__(self, in_features=3, num_classes=10, ens=4, dim=2048, device=None):
         super().__init__()
         self.ens = ens
+        self.conv1 = nn.Sequential(
+            nn.Conv2d(in_features, 32, kernel_size=3, padding=1, stride=1, bias=True),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=(2, 2))
+        )
+        self.conv2 = nn.Sequential(
+            nn.Conv2d(32, 64, kernel_size=3, padding=1, stride=1, bias=True),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=(2, 2))
+        )
+        self.conv3 = nn.Sequential(
+            nn.Conv2d(64, 128, kernel_size=3, padding=1, stride=1, bias=True),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=(2, 2))
+        )
+        # self.conv1 = ER1BayesConv2d(in_features, 32, kernel_size=3, ensemble=ens, device=device)
 
-        self.conv1 = ER1BayesConv2d(in_features, 32, kernel_size=3, ensemble=ens, device=device)
+        # self.conv2 = ER1BayesConv2d(32, 64, kernel_size=3, ensemble=ens, device=device)
 
-        self.conv2 = ER1BayesConv2d(32, 64, kernel_size=3, ensemble=ens, device=device)
+        # self.conv3 = ER1BayesConv2d(64, 128, kernel_size=3, ensemble=ens, device=device)
 
-        self.conv3 = ER1BayesConv2d(64, 128, kernel_size=3, ensemble=ens, device=device)
 
         self.fc1 = ER1BayesLinear(dim, 512, ensemble=ens, device=device)
 
@@ -249,12 +264,12 @@ class ER1FedAvgCNN(nn.Module):
 
         weights = {}
         if rank_1_matrix is not None:
-            weights[0] = [rank_1_matrix['conv1.alpha_mu'], rank_1_matrix['conv1.alpha_rho'],
-                          rank_1_matrix['conv1.gamma_mu'], rank_1_matrix['conv1.gamma_rho']]
-            weights[1] = [rank_1_matrix['conv2.alpha_mu'], rank_1_matrix['conv2.alpha_rho'],
-                          rank_1_matrix['conv2.gamma_mu'], rank_1_matrix['conv2.gamma_rho']]
-            weights[2] = [rank_1_matrix['conv3.alpha_mu'], rank_1_matrix['conv3.alpha_rho'],
-                          rank_1_matrix['conv3.gamma_mu'], rank_1_matrix['conv3.gamma_rho']]
+            # weights[0] = [rank_1_matrix['conv1.alpha_mu'], rank_1_matrix['conv1.alpha_rho'],
+            #               rank_1_matrix['conv1.gamma_mu'], rank_1_matrix['conv1.gamma_rho']]
+            # weights[1] = [rank_1_matrix['conv2.alpha_mu'], rank_1_matrix['conv2.alpha_rho'],
+            #               rank_1_matrix['conv2.gamma_mu'], rank_1_matrix['conv2.gamma_rho']]
+            # weights[2] = [rank_1_matrix['conv3.alpha_mu'], rank_1_matrix['conv3.alpha_rho'],
+            #               rank_1_matrix['conv3.gamma_mu'], rank_1_matrix['conv3.gamma_rho']]
             weights[3] = [rank_1_matrix['fc1.alpha_mu'], rank_1_matrix['fc1.alpha_rho'],
                           rank_1_matrix['fc1.gamma_mu'], rank_1_matrix['fc1.gamma_rho']]
             weights[4] = [rank_1_matrix['fc2.alpha_mu'], rank_1_matrix['fc2.alpha_rho'],
@@ -262,15 +277,15 @@ class ER1FedAvgCNN(nn.Module):
             weights[5] = [rank_1_matrix['fc3.alpha_mu'], rank_1_matrix['fc3.alpha_rho'],
                           rank_1_matrix['fc3.gamma_mu'], rank_1_matrix['fc3.gamma_rho']]
 
-        out = self.conv1(x, weights.get(0))
+        out = self.conv1(x)
         out = F.relu(out, inplace=True)
         out = F.max_pool2d(out, kernel_size=(2, 2))
 
-        out = self.conv2(out, weights.get(1))
+        out = self.conv2(out)
         out = F.relu(out, inplace=True)
         out = F.max_pool2d(out, kernel_size=(2, 2))
 
-        out = self.conv3(out, weights.get(2))
+        out = self.conv3(out)
         out = F.relu(out, inplace=True)
         out = F.max_pool2d(out, kernel_size=(2, 2))
 

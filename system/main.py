@@ -374,7 +374,7 @@ if __name__ == "__main__":
             7: ["cnn", "pFedMe"],
             8: ["cnn", "FedRep"],
             9: ["Fourier_bayes_cnn", "FedFourierFT"]}
-    a_num = 1
+    a_num = 9
 
     dataset = ["Cifar10-dir-0.1", "Cifar10-pat-2N", "Cifar10-pat-5N", "Cifar10-pat-2S", "Cifar10-pat-5S", "Cifar10-pat-2M", "Cifar10-pat-5M", "Cifar100-pat-5S", "Cifar100-pat-5M", "Tiny-imagenet"]
 
@@ -387,7 +387,7 @@ if __name__ == "__main__":
     parser.add_argument('-m', "--model", type=str, default=algo[a_num][0])
     parser.add_argument('-algo', "--algorithm", type=str, default=algo[a_num][1])
     parser.add_argument('-lbs', "--batch_size", type=int, default=32)
-    parser.add_argument('-lr', "--local_learning_rate", type=float, default=0.001, help="Local learning rate")
+    parser.add_argument('-lr', "--local_learning_rate", type=float, default=0.1, help="Local learning rate")
     parser.add_argument('-ld', "--learning_rate_decay", type=bool, default=True)
     parser.add_argument('-ldg', "--learning_rate_decay_gamma", type=float, default=0.99)
     parser.add_argument('-gr', "--global_rounds", type=int, default=1000)
@@ -430,7 +430,7 @@ if __name__ == "__main__":
                         help="Proximal rate for FedProx")
     parser.add_argument('-K', "--K", type=int, default=5,
                         help="Number of personalized training steps for pFedMe")
-    parser.add_argument('-lrp', "--p_learning_rate", type=float, default=0.005, help="personalized learning rate")
+    parser.add_argument('-lrp', "--p_learning_rate", type=float, default=0.001, help="personalized learning rate")
 
     parser.add_argument('-pv', "--prev", type=int, default=0, help="Previous Running times")
     parser.add_argument('-t', "--times", type=int, default=1, help="Running times")

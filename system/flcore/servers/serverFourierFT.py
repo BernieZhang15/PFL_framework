@@ -22,6 +22,15 @@ class FedFourierFT(Server):
 
             s_t = time.time()
 
+            # # Reduce local learning rate after 600 global rounds
+            # if i == 600:
+            #     print("\n[FedFourierFT] Reached round 600, set lr to 0.05 for all clients.")
+            #     self.learning_rate = 0.001
+            #     for client in self.clients:
+            #         client.learning_rate = 0.001
+            #         for param_group in client.optimizer.param_groups:
+            #             param_group['lr'] = 0.001
+
             self.selected_clients = self.select_clients()
             self.send_models()
 
