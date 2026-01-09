@@ -8,7 +8,11 @@ LR=0.15
 mkdir -p "$LOGDIR"
 
 DATASETS="
+Cifar10-pat-5N
 Cifar10-pat-2S
+Cifar10-pat-5S
+Cifar10-pat-2M
+Cifar10-pat-5M
 "
 
 echo "$DATASETS" | while IFS= read -r ds; do
