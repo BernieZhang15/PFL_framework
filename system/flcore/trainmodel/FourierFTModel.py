@@ -129,9 +129,17 @@ class FourierFTLinear(FourierFTLayer):
 
 
 class FTFedAvgCNN(nn.Module):
-    def __init__(self, in_features=3, num_classes=10, ens_num=4, dim=2048):
+    def __init__(self, in_features=3, num_classes=10, ens_num=4, dim=2048, freq_ratio=1.0, freq_bias=True):
         super().__init__()
         self.ens_num = ens_num
+        self.freq_ratio = freq_ratio
+        self.freq_bias = freq_bias
+
+        # 基础 n_frequency 值，按 freq_ratio 比例调整
+        base_freq1, base_freq2, base_freq3 = 1024, 512, 256
+        n_freq1 = max(1, int(base_freq1 * freq_ratio))
+        n_freq2 = max(1, int(base_freq2 * freq_ratio))
+        n_freq3 = max(1, int(base_freq3 * freq_ratio))
 
         self.conv1 = nn.Sequential(
             nn.Conv2d(in_features, 32, kernel_size=3, padding=1, stride=1, bias=True),
@@ -152,9 +160,9 @@ class FTFedAvgCNN(nn.Module):
         fc2 = nn.Linear(512, 256, bias=True)
         fc3 = nn.Linear(256, num_classes, bias=True)
 
-        self.fc1 = FourierFTLinear(fc1, n_frequency=1024, scaling=350, ens_num=ens_num, freq_bias=True, fc=0.6, bandwidth=0.25)
-        self.fc2 = FourierFTLinear(fc2, n_frequency=512, scaling=150, ens_num=ens_num, freq_bias=True, fc=0.7, bandwidth=0.15)
-        self.fc3 = FourierFTLinear(fc3, n_frequency=256, scaling=200, ens_num=ens_num, freq_bias=True, fc=0.8, bandwidth=0.2)
+        self.fc1 = FourierFTLinear(fc1, n_frequency=n_freq1, scaling=350, ens_num=ens_num, freq_bias=freq_bias, fc=0.6, bandwidth=0.25)
+        self.fc2 = FourierFTLinear(fc2, n_frequency=n_freq2, scaling=150, ens_num=ens_num, freq_bias=freq_bias, fc=0.7, bandwidth=0.15)
+        self.fc3 = FourierFTLinear(fc3, n_frequency=n_freq3, scaling=200, ens_num=ens_num, freq_bias=freq_bias, fc=0.8, bandwidth=0.2)
 
 
     def forward(self, data_input: torch.Tensor) -> torch.Tensor:

@@ -132,7 +132,7 @@ def run(args):
 
         elif model_str == "Fourier_bayes_cnn":
             if "Cifar10" in args.dataset:
-                args.model = FTFedAvgCNN(num_classes=args.num_classes, ens_num=args.num_ensemble).to(args.device)
+                args.model = FTFedAvgCNN(num_classes=args.num_classes, ens_num=args.num_ensemble, freq_ratio=args.freq_ratio, freq_bias=args.freq_bias).to(args.device)
             elif "mnist" in args.dataset:
                 args.model = LRFedAvgCNN(in_features=1, num_classes=args.num_classes, ens=args.num_ensemble, dim=1152).to(args.device)
 
@@ -382,7 +382,7 @@ if __name__ == "__main__":
     parser.add_argument('-seed', "--seed", type=int, default=573)
     parser.add_argument('-dev', "--device", type=str, default="cuda", choices=["cpu", "cuda"])
     parser.add_argument('-did', "--device_id", type=str, default="0")
-    parser.add_argument('-data', "--dataset", type=str, default=dataset[0])
+    parser.add_argument('-data', "--dataset", type=str, default=dataset[4])
     parser.add_argument('-nb', "--num_classes", type=int, default=10)
     parser.add_argument('-m', "--model", type=str, default=algo[a_num][0])
     parser.add_argument('-algo', "--algorithm", type=str, default=algo[a_num][1])
@@ -419,6 +419,14 @@ if __name__ == "__main__":
     parser.add_argument('-ar', "--adaptive_rank", type=bool, default=False)
     parser.add_argument('-sd', "--sep_data", type=bool, default=False)
     parser.add_argument('-qm', "--quan_method", type=str, default="HardConcrete")
+
+    # FedFourierFT
+    parser.add_argument('-fr', "--freq_ratio", type=float, default=1,
+                        help="Ratio to scale n_frequency values in FourierFT layers (e.g., 0.5 for half, 2.0 for double)")
+    parser.add_argument('-fb', "--freq_bias", type=lambda x: x.lower() == 'true', default=True,
+                        help="Whether to use frequency-biased sampling in FourierFT layers (default: True)")
+    parser.add_argument('-sl', "--spec_lambda", type=float, default=0.5,
+                        help="Coefficient for spectrum regularization loss in FourierFT (default: 0.5)")
 
     # pFedMe / PerAvg / FedProx / FedAMP / FedPHP / pFedBayes
     parser.add_argument('-bt', "--beta", type=float, default=1.0,
