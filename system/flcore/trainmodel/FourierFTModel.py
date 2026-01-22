@@ -111,7 +111,7 @@ class FourierFTLinear(FourierFTLayer):
         delta_stack = torch.stack([self.get_delta_weight() for _ in range(self.ens_num)], dim=0)
         base_weight = self.base_layer.weight.unsqueeze(0).expand(self.ens_num, -1, -1)
 
-        agg_weight = delta_stack + base_weight
+        agg_weight = base_weight + delta_stack
         # ratio = delta_stack.norm() / base_weight.norm()
         # print(f"[{self.base_layer}] ||ΔW||/||W|| = {ratio.item():.4f}")
 
@@ -161,8 +161,8 @@ class FTFedAvgCNN(nn.Module):
         fc3 = nn.Linear(256, num_classes, bias=True)
 
         self.fc1 = FourierFTLinear(fc1, n_frequency=n_freq1, scaling=350, ens_num=ens_num, freq_bias=freq_bias, fc=0.6, bandwidth=0.25)
-        self.fc2 = FourierFTLinear(fc2, n_frequency=n_freq2, scaling=150, ens_num=ens_num, freq_bias=freq_bias, fc=0.7, bandwidth=0.15)
-        self.fc3 = FourierFTLinear(fc3, n_frequency=n_freq3, scaling=200, ens_num=ens_num, freq_bias=freq_bias, fc=0.8, bandwidth=0.2)
+        self.fc2 = FourierFTLinear(fc2, n_frequency=n_freq2, scaling=200, ens_num=ens_num, freq_bias=freq_bias, fc=0.7, bandwidth=0.15)
+        self.fc3 = FourierFTLinear(fc3, n_frequency=n_freq3, scaling=100, ens_num=ens_num, freq_bias=freq_bias, fc=0.8, bandwidth=0.2)
 
 
     def forward(self, data_input: torch.Tensor) -> torch.Tensor:

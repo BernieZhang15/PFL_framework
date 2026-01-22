@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#SBATCH -J FedFourierFT_sl_sweep
+#SBATCH -J FedFourierFT_sl_sweep_cifar100_5M
 #SBATCH -p gpu-l40s
 #SBATCH -N 1
 #SBATCH -n 1
@@ -23,16 +23,16 @@ conda activate PFL
 
 PY=${PY:-python}
 MAIN=main.py
-LR=0.1
+LR=0.001
 FR=1.0
-FLR=1
+FLR=10
 FB=true
 SEEDS=(
     $((RANDOM % 100000))
     $((RANDOM % 100000))
     $((RANDOM % 100000))
 )
-LOGDIR="./FedFourierFT_sl_sweep/slurm-${SLURM_JOB_ID}"
+LOGDIR="./FedFourierFT_sl_sweep_cifar100_5M/slurm-${SLURM_JOB_ID}"
 mkdir -p "$LOGDIR"
 
 # Number of GPUs to use (SLURM remaps GPUs to 0,1,2 inside the job)
@@ -41,16 +41,15 @@ NUM_GPUS=3
 echo "Job started at $(date)"
 echo "Working directory: $(pwd)"
 echo "Python: $(which $PY)"
-echo "freq_ratio: ${FR}, freq_bias: ${FB}, seeds: ${SEEDS[*]}"
+echo "LR: ${LR}, FR: ${FR}, FB: ${FB}, Seeds: ${SEEDS[*]}"
 echo "Number of GPUs: ${NUM_GPUS}"
 
-# spec_lambda values: 0, 0.2, 0.4, 0.6, 0.8
+# spec_lambda values: 0.1 ~ 1.0
 SL_VALUES=(0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0)
 
 # Datasets to run
 DATASETS=(
-    "Cifar10-pat-2M"
-    "Cifar10-pat-5M"
+    "Cifar100-pat-5M"
 )
 
 # Function to run experiment on specific GPU
@@ -62,7 +61,7 @@ run_experiment() {
     local logfile="${LOGDIR}/${dataset}_sl${sl}_seed${seed}.log"
     
     echo "[GPU ${gpu_id}] Starting: dataset=${dataset}, sl=${sl}, seed=${seed}"
-    $PY "$MAIN" -data "$dataset" -lr "$LR" -fr "$FR" -fb "$FB" -dlrr "$FLR" -sl "$sl" -seed "$seed" -did "$gpu_id" > "$logfile" 2>&1
+    $PY "$MAIN" -data "$dataset" -lr "$LR" -fr "$FR" -fb "$FB" -dlrr "$FLR" -sl "$sl" -seed "$seed" -nb 100 -did "$gpu_id" > "$logfile" 2>&1
     local exit_code=$?
     echo "[GPU ${gpu_id}] Finished: dataset=${dataset}, sl=${sl}, seed=${seed}, exit_code=${exit_code}"
     return $exit_code
@@ -71,10 +70,10 @@ run_experiment() {
 # Total number of experiments
 total_experiments=$((${#DATASETS[@]} * ${#SL_VALUES[@]} * ${#SEEDS[@]}))
 echo "Total experiments to run: ${total_experiments}"
-echo "Using 3 GPUs in parallel"
+echo "Using ${NUM_GPUS} GPUs in parallel"
 echo "========================================"
 
-# Create a list of all (dataset, sl) combinations
+# Create a list of all (dataset, sl, seed) combinations
 declare -a EXPERIMENTS
 idx=0
 for ds in "${DATASETS[@]}"; do

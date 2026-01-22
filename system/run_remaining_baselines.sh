@@ -4,15 +4,12 @@ set -euo pipefail
 PY=${PY:-python}
 MAIN=${MAIN:-main.py}
 # Keep consistent with your Fourier runs by default; override via env if needed.
-LR=${LR:-0.1}
+LR=0.01
 LOGDIR=${LOGDIR:-./baselines}
 mkdir -p "$LOGDIR"
 
 DATASETS="
-Cifar10-pat-2S
-Cifar10-pat-5S
-Cifar10-pat-2M
-Cifar10-pat-5M
+Cifar100-pat-5M
 "
 
 # Remaining experiments (from system/main.py algo dict):
@@ -31,7 +28,7 @@ Cifar10-pat-5M
 # cnn pFedMe
 # "
 EXPERIMENTS="
-cnn pFedMe
+cnn FedAvg
 "
 
 run_one() {
@@ -46,7 +43,7 @@ run_one() {
   echo "Running: algo=${algo} model=${model} dataset=${ds} lr=${LR}"
   echo "Log: $logfile"
 
-  "$PY" "$MAIN" -m "$model" -algo "$algo" -data "$ds" -lr "$LR" 2>&1 | tee "$logfile"
+  "$PY" "$MAIN" -m "$model" -algo "$algo" -data "$ds" -lr "$LR" -nb 100 2>&1 | tee "$logfile"
 }
 
 echo "$EXPERIMENTS" | while read -r model algo; do

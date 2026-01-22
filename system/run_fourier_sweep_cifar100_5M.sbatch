@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-#SBATCH -J FedFourierFT_sl_sweep
+#SBATCH -J FedFourierFT_sweep_cifar100_5M
 #SBATCH -p gpu-l40s
 #SBATCH -N 1
 #SBATCH -n 1
 #SBATCH --gres=gpu:3
-#SBATCH -t 48:00:00
+#SBATCH -t 72:00:00
 #SBATCH --cpus-per-task=24
 #SBATCH --mem=96G
 #SBATCH -o runs/slurm-%x-%j.out
@@ -23,16 +23,14 @@ conda activate PFL
 
 PY=${PY:-python}
 MAIN=main.py
-LR=0.1
-FR=1.0
-FLR=1
-FB=true
+LR=0.001
+SL=0.9
 SEEDS=(
     $((RANDOM % 100000))
     $((RANDOM % 100000))
     $((RANDOM % 100000))
 )
-LOGDIR="./FedFourierFT_sl_sweep/slurm-${SLURM_JOB_ID}"
+LOGDIR="./FedFourierFT_sweep_cifar100_5M/slurm-${SLURM_JOB_ID}"
 mkdir -p "$LOGDIR"
 
 # Number of GPUs to use (SLURM remaps GPUs to 0,1,2 inside the job)
@@ -41,46 +39,45 @@ NUM_GPUS=3
 echo "Job started at $(date)"
 echo "Working directory: $(pwd)"
 echo "Python: $(which $PY)"
-echo "freq_ratio: ${FR}, freq_bias: ${FB}, seeds: ${SEEDS[*]}"
+echo "LR: ${LR}, SL: ${SL}, Seeds: ${SEEDS[*]}"
 echo "Number of GPUs: ${NUM_GPUS}"
 
-# spec_lambda values: 0, 0.2, 0.4, 0.6, 0.8
-SL_VALUES=(0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0)
+# freq_ratio values
+FR_VALUES=(0.1 0.2 0.4 0.6 0.8 1 1.2 1.4 1.6 1.8 2.0)
 
 # Datasets to run
 DATASETS=(
-    "Cifar10-pat-2M"
-    "Cifar10-pat-5M"
+    "Cifar100-pat-5M"
 )
 
 # Function to run experiment on specific GPU
 run_experiment() {
     local gpu_id=$1
-    local sl=$2
+    local fr=$2
     local dataset=$3
     local seed=$4
-    local logfile="${LOGDIR}/${dataset}_sl${sl}_seed${seed}.log"
+    local logfile="${LOGDIR}/${dataset}_fr${fr}_seed${seed}.log"
     
-    echo "[GPU ${gpu_id}] Starting: dataset=${dataset}, sl=${sl}, seed=${seed}"
-    $PY "$MAIN" -data "$dataset" -lr "$LR" -fr "$FR" -fb "$FB" -dlrr "$FLR" -sl "$sl" -seed "$seed" -did "$gpu_id" > "$logfile" 2>&1
+    echo "[GPU ${gpu_id}] Starting: dataset=${dataset}, fr=${fr}, seed=${seed}"
+    $PY "$MAIN" -data "$dataset" -lr "$LR" -fr "$fr" -sl "$SL" -seed "$seed" -nb 100 -did "$gpu_id" > "$logfile" 2>&1
     local exit_code=$?
-    echo "[GPU ${gpu_id}] Finished: dataset=${dataset}, sl=${sl}, seed=${seed}, exit_code=${exit_code}"
+    echo "[GPU ${gpu_id}] Finished: dataset=${dataset}, fr=${fr}, seed=${seed}, exit_code=${exit_code}"
     return $exit_code
 }
 
 # Total number of experiments
-total_experiments=$((${#DATASETS[@]} * ${#SL_VALUES[@]} * ${#SEEDS[@]}))
+total_experiments=$((${#DATASETS[@]} * ${#FR_VALUES[@]} * ${#SEEDS[@]}))
 echo "Total experiments to run: ${total_experiments}"
 echo "Using 3 GPUs in parallel"
 echo "========================================"
 
-# Create a list of all (dataset, sl) combinations
+# Create a list of all (dataset, fr, seed) combinations
 declare -a EXPERIMENTS
 idx=0
 for ds in "${DATASETS[@]}"; do
-    for sl in "${SL_VALUES[@]}"; do
+    for fr in "${FR_VALUES[@]}"; do
         for seed in "${SEEDS[@]}"; do
-            EXPERIMENTS[$idx]="${ds}|${sl}|${seed}"
+            EXPERIMENTS[$idx]="${ds}|${fr}|${seed}"
             idx=$((idx + 1))
         done
     done
@@ -102,9 +99,9 @@ while [ $batch_idx -lt $num_experiments ]; do
             exp="${EXPERIMENTS[$exp_idx]}"
             ds="${exp%%|*}"
             rest="${exp#*|}"
-            sl="${rest%%|*}"
+            fr="${rest%%|*}"
             seed="${rest##*|}"
-            run_experiment $gpu_id "$sl" "$ds" "$seed" &
+            run_experiment $gpu_id "$fr" "$ds" "$seed" &
             pids+=($!)
         fi
     done

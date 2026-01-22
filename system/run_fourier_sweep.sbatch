@@ -23,8 +23,13 @@ conda activate PFL
 
 PY=${PY:-python}
 MAIN=main.py
-LR=0.15
-SEED=42
+LR=0.1
+FLR=1
+SEEDS=(
+    $((RANDOM % 100000))
+    $((RANDOM % 100000))
+    $((RANDOM % 100000))
+)
 LOGDIR="./FedFourierFT_sweep/slurm-${SLURM_JOB_ID}"
 mkdir -p "$LOGDIR"
 
@@ -34,16 +39,14 @@ NUM_GPUS=3
 echo "Job started at $(date)"
 echo "Working directory: $(pwd)"
 echo "Python: $(which $PY)"
-echo "Seed: ${SEED}"
+echo "Seeds: ${SEEDS[*]}"
 echo "Number of GPUs: ${NUM_GPUS}"
 
 # freq_ratio values: 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0
-FR_VALUES=(0.25 0.5 0.75 1.0 1.25 1.5 1.75 2.0)
+FR_VALUES=(0.1 0.2 0.4 0.6 0.8 1 1.2 1.4 1.6 1.8 2.0)
 
 # Datasets to run
 DATASETS=(
-    "Cifar10-pat-2S"
-    "Cifar10-pat-5S"
     "Cifar10-pat-2M"
     "Cifar10-pat-5M"
 )
@@ -53,17 +56,18 @@ run_experiment() {
     local gpu_id=$1
     local fr=$2
     local dataset=$3
-    local logfile="${LOGDIR}/${dataset}_fr${fr}.log"
+    local seed=$4
+    local logfile="${LOGDIR}/${dataset}_fr${fr}_seed${seed}.log"
     
-    echo "[GPU ${gpu_id}] Starting: dataset=${dataset}, fr=${fr}"
-    $PY "$MAIN" -data "$dataset" -lr "$LR" -fr "$fr" -seed "$SEED" -did "$gpu_id" > "$logfile" 2>&1
+    echo "[GPU ${gpu_id}] Starting: dataset=${dataset}, fr=${fr}, seed=${seed}"
+    $PY "$MAIN" -data "$dataset" -lr "$LR" -fr "$fr" -dlrr "$FLR" -seed "$seed" -did "$gpu_id" > "$logfile" 2>&1
     local exit_code=$?
-    echo "[GPU ${gpu_id}] Finished: dataset=${dataset}, fr=${fr}, exit_code=${exit_code}"
+    echo "[GPU ${gpu_id}] Finished: dataset=${dataset}, fr=${fr}, seed=${seed}, exit_code=${exit_code}"
     return $exit_code
 }
 
 # Total number of experiments
-total_experiments=$((${#DATASETS[@]} * ${#FR_VALUES[@]}))
+total_experiments=$((${#DATASETS[@]} * ${#FR_VALUES[@]} * ${#SEEDS[@]}))
 echo "Total experiments to run: ${total_experiments}"
 echo "Using 3 GPUs in parallel"
 echo "========================================"
@@ -73,8 +77,10 @@ declare -a EXPERIMENTS
 idx=0
 for ds in "${DATASETS[@]}"; do
     for fr in "${FR_VALUES[@]}"; do
-        EXPERIMENTS[$idx]="${ds}|${fr}"
-        idx=$((idx + 1))
+        for seed in "${SEEDS[@]}"; do
+            EXPERIMENTS[$idx]="${ds}|${fr}|${seed}"
+            idx=$((idx + 1))
+        done
     done
 done
 
@@ -93,8 +99,10 @@ while [ $batch_idx -lt $num_experiments ]; do
         if [ $exp_idx -lt $num_experiments ]; then
             exp="${EXPERIMENTS[$exp_idx]}"
             ds="${exp%%|*}"
-            fr="${exp##*|}"
-            run_experiment $gpu_id "$fr" "$ds" &
+            rest="${exp#*|}"
+            fr="${rest%%|*}"
+            seed="${rest##*|}"
+            run_experiment $gpu_id "$fr" "$ds" "$seed" &
             pids+=($!)
         fi
     done

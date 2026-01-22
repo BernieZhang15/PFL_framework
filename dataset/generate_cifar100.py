@@ -34,6 +34,9 @@ def generate_cifar100(dir_path, num_clients, num_classes, niid, balance, partiti
     dataset_image = np.concatenate([trainset.data, testset.data], axis=0)
     dataset_label = np.concatenate([trainset.targets, testset.targets], axis=0)
 
+    # Convert from NHWC to NCHW format (PyTorch expects channels first)
+    dataset_image = np.transpose(dataset_image, (0, 3, 1, 2))
+
     X, y, statistic = separate_data((dataset_image, dataset_label), num_clients, num_classes, 
                                     niid, balance, partition, class_per_client=class_per_client)
     train_data, test_data = split_data(X, y)

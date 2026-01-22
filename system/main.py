@@ -427,6 +427,8 @@ if __name__ == "__main__":
                         help="Whether to use frequency-biased sampling in FourierFT layers (default: True)")
     parser.add_argument('-sl', "--spec_lambda", type=float, default=0.5,
                         help="Coefficient for spectrum regularization loss in FourierFT (default: 0.5)")
+    parser.add_argument('-dlrr', "--delta_lr_ratio", type=float, default=10,
+                        help="Learning-rate ratio for spectrum (delta) parameters in FourierFT (default: 1.0)")
 
     # pFedMe / PerAvg / FedProx / FedAMP / FedPHP / pFedBayes
     parser.add_argument('-bt', "--beta", type=float, default=1.0,

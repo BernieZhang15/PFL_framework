@@ -9,6 +9,29 @@ class clientFourierFT(Client):
     def __init__(self, args, id, train_samples, test_samples, **kwargs):
         super().__init__(args, id, train_samples, test_samples, **kwargs)
         self.spec_lambda = args.spec_lambda
+        self.delta_lr_ratio = getattr(args, "delta_lr_ratio", 1.0)
+        self._delta_lr_last_decay_round = None
+
+        base_params = []
+        delta_params = []
+        for name, param in self.model.named_parameters():
+            if not param.requires_grad:
+                continue
+            if 'spectrum' in name:
+                delta_params.append(param)
+            else:
+                base_params.append(param)
+
+        self.optimizer = torch.optim.SGD(
+            [
+                {"params": base_params, "lr": self.learning_rate},
+                {"params": delta_params, "lr": self.learning_rate * self.delta_lr_ratio},
+            ]
+        )
+        self.learning_rate_scheduler = torch.optim.lr_scheduler.ExponentialLR(
+            optimizer=self.optimizer,
+            gamma=args.learning_rate_decay_gamma
+        )
 
 
     def train(self):
@@ -16,16 +39,25 @@ class clientFourierFT(Client):
         start_time = time.time()
         self.model.train()
 
+        # if self.train_time_cost['num_rounds'] >= 400 and len(self.optimizer.param_groups) > 1:
+        #     current_round = self.train_time_cost['num_rounds']
+        #     target_round = 400 + ((current_round - 400) // 100) * 100
+        #     if self._delta_lr_last_decay_round is None or target_round > self._delta_lr_last_decay_round:
+        #         self.optimizer.param_groups[1]['lr'] *= 0.001
+        #         self._delta_lr_last_decay_round = target_round
+
         for step in range(self.local_epochs):
             x, y = self.get_next_batch(train_loader)
             self.optimizer.zero_grad()
             output, kl = self.model(x)
-            output = torch.mean(F.softmax(output, dim=2), dim=0)
+            # Only apply ensemble averaging if output has ensemble dimension (3D)
+            if output.dim() == 3:
+                output = torch.mean(output, dim=0)  # (ens, batch, num_classes) -> (batch, num_classes)
             loss = self.loss(output, y)
             spec_loss = 0.0
             for name, module in self.model.named_modules():
                 if isinstance(module, nn.Linear):
-                    spec_loss += self.spectrum_regularization(module.weight, mode='high', radius=0.7, lambd=1e-4)
+                    spec_loss += self.spectrum_regularization(module.weight, mode='high', radius=0.4, lambd=1e-4)
             # print(f"Step {step}: Spec Loss={spec_loss.item():.4f}")
             lambda_kl = 0.9
             loss += self.spec_lambda * spec_loss + lambda_kl * kl / self.train_samples
@@ -96,7 +128,9 @@ class clientFourierFT(Client):
 
                 output, kl = self.model(x)
 
-                output = torch.mean(F.softmax(output, dim=2), dim=0)
+                # Only apply ensemble averaging if output has ensemble dimension (3D)
+                if output.dim() == 3:
+                    output = torch.mean(output, dim=0)  # (ens, batch, num_classes) -> (batch, num_classes)
 
                 eval_cor += (torch.sum(torch.argmax(output, dim=1) == y)).item()
                 eval_num += y.shape[0]
@@ -137,8 +171,11 @@ class clientFourierFT(Client):
 
                 output, kl = self.model(x)
 
-                output = torch.mean(F.softmax(output, dim=2), dim=0)
-                loss = F.cross_entropy(output, y)
+                # Only apply ensemble averaging if output has ensemble dimension (3D)
+                if output.dim() == 3:
+                    output = torch.mean(output, dim=0)  # (ens, batch, num_classes) -> (batch, num_classes)
+                
+                loss = self.loss(output, y)
 
                 train_num += y.shape[0]
                 losses += loss.item() * y.shape[0]
