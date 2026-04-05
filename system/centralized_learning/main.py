@@ -1,14 +1,15 @@
 import torch
-import torchvision
+import numpy as np
 import torch.backends.cudnn as cudnn
 import torch.nn.functional as F
-import torchvision.transforms as transforms
-from models.FourierFTModel import FourierFTFedAvg
+from models.FourierFTModel import FourierFTModel
+from torch.utils.data import Dataset, DataLoader
+from torch.utils.tensorboard import SummaryWriter
 
-freq = 10
-lr = 0.05
-batch_size = 256
-num_epochs = 100
+freq = 5
+lr = 1e-3
+batch_size = 16
+num_epochs = 4000
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -17,31 +18,45 @@ cudnn.benchmark = True
 torch.manual_seed(seed)
 torch.cuda.manual_seed_all(seed)
 
-print("| Preparing CIFAR-10 dataset...")
+writer = SummaryWriter(comment=' Bayes low')
 
-transform = transforms.Compose(
-    [transforms.ToTensor(), transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+class SimpleDataset(Dataset):
+    def __init__(self, X, y):
 
-trainset = torchvision.datasets.CIFAR10("./data", train=True, download=True, transform=transform)
-testset = torchvision.datasets.CIFAR10("./data", train=False, download=True, transform=transform)
+        self.X = torch.as_tensor(X, dtype=torch.float32).view(-1, 1)
+        self.y = torch.as_tensor(y, dtype=torch.float32).view(-1, 1)
 
-train_samples = len(trainset)
-test_samples = len(testset)
+    def __len__(self):
+        return len(self.X)
 
-trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size, shuffle=True, num_workers=0)
-testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size, shuffle=False, num_workers=0)
+    def __getitem__(self, idx):
+        return self.X[idx], self.y[idx]
+
+def f_true(x, eps=0.5):
+    return np.sin(2 * np.pi * x) + eps * np.sin(20 * np.pi * x)
+
+def make_data(n_train=40, n_test=400, eps=0.5, noise_std=0.1, seed=0):
+    rng = np.random.default_rng(seed)
+    x_train = rng.uniform(low=0, high=1, size=n_train)
+    y_train = f_true(x_train, eps=eps) + rng.normal(0, noise_std, size=n_train)
+
+    x_test = np.linspace(0,1, n_test)
+    y_test = f_true(x_test, eps=eps)
+
+    return x_train, y_train, x_test, y_test
+
+
+x_train, y_train, x_test, y_test = make_data()
+trainloader = DataLoader(SimpleDataset(x_train, y_train), batch_size=batch_size, shuffle=True, num_workers=0)
+testloader = DataLoader(SimpleDataset(x_test, y_test), batch_size=400, shuffle=False, num_workers=0)
 
 print('\n[Phase 2] : Model setup')
-net = FourierFTFedAvg().to(device)
-ce_criterion = torch.nn.CrossEntropyLoss()
-optimizer = torch.optim.SGD(net.parameters(), lr)
-scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.995)
+net = FourierFTModel(ens_num=4).to(device)
+optimizer = torch.optim.Adam(net.parameters(), lr=lr, weight_decay=1e-4)
 
 print('\n[Phase 3] : Training model')
 print('| Training Epochs = ' + str(num_epochs))
 print('| Initial Learning Rate = ' + str(lr))
-
-best_acc = 0
 
 for i in range(num_epochs):
 
@@ -56,11 +71,10 @@ for i in range(num_epochs):
 
         output, kl = net(x)
 
-        output = F.softmax(output, dim=2)
-        output = torch.log(torch.mean(output, dim=0))
-        loss = F.nll_loss(output, y)
+        output = torch.mean(output, dim=0)
+        loss = F.mse_loss(output, y)
 
-        loss += kl / train_samples
+        loss += kl / 32 * 0.0001
 
         loss.backward()
 
@@ -68,19 +82,11 @@ for i in range(num_epochs):
 
         optimizer.step()
 
-    scheduler.step()
-
     print('Train Loss at epoch {}: {:.4f}'.format(i, losses / len(trainloader)))
 
     if i % freq == 0:
 
         net.eval()
-
-        test_cor = 0
-        test_num = 0
-
-        y_prob = []
-        y_true = []
 
         with torch.no_grad():
 
@@ -90,23 +96,22 @@ for i in range(num_epochs):
 
                 output, kl = net(x)
 
-                output = torch.mean(F.softmax(output, dim=2), dim=0)
+                mu = torch.mean(output, dim=0)
+                sigma = torch.std(output, dim=0)
 
-                test_cor += (torch.sum(torch.argmax(output, dim=1) == y)).item()
-                test_num += y.shape[0]
+                var = sigma**2 + 0.01
 
-                y_prob.append(output.detach().cpu())
-                y_true.append(y.cpu())
+                nll = 0.5 * torch.mean(torch.log(2 * torch.pi * var) + (y - mu)**2 / var)
 
-        test_acc = test_cor / test_num
+            writer.add_scalar('Val/NLL', nll, i)
 
-        print("Evaluation results for round {}".format(i))
-        print("Averaged Test Accuracy: {:.4f}".format(test_acc))
 
-        if test_acc > best_acc:
-            best_acc = test_acc
 
-print(best_acc)
+
+
+
+
+
 
 
 

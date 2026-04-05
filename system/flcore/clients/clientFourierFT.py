@@ -1,6 +1,6 @@
 import time
 import torch
-from torch.nn import nn
+import torch.nn as nn
 import torch.nn.functional as F
 from flcore.clients.clientbase import Client
 
