@@ -1,7 +1,14 @@
 import time
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
+import matplotlib
+from typing import Optional
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+from flcore.trainmodel.FourierFTModel import FourierFTLinear
 from flcore.clients.clientbase import Client
 
 
@@ -57,7 +64,7 @@ class clientFourierFT(Client):
             spec_loss = 0.0
             for name, module in self.model.named_modules():
                 if isinstance(module, nn.Linear):
-                    spec_loss += self.spectrum_regularization(module.weight, mode='high', radius=0.4, lambd=1e-4)
+                    spec_loss += self.spectrum_regularization(module.weight, mode='high', radius=0.4, lambd=1e-3)
             # print(f"Step {step}: Spec Loss={spec_loss.item():.4f}")
             lambda_kl = 0.9
             loss += self.spec_lambda * spec_loss + lambda_kl * kl / self.train_samples
@@ -186,5 +193,97 @@ class clientFourierFT(Client):
         for (module_name, new_param), old_param in zip(model.named_parameters(), self.model.parameters()):
             if 'spectrum' not in module_name:
                 old_param.data = new_param.data.clone()
+
+    # def save_fft_spectra(self, round_idx: int, output_dir: Optional[str] = None):
+    #     if output_dir is None:
+    #         output_dir = os.path.join(self.save_folder_name, "fft_visuals")
+    #     os.makedirs(output_dir, exist_ok=True)
+
+    #     linear_layers = [(name, module) for name, module in self.model.named_modules()
+    #                      if isinstance(module, FourierFTLinear)]
+    #     if not linear_layers:
+    #         print("[FourierFT] No FourierFTLinear layers found for visualization.")
+    #         return
+
+    #     target_layers = linear_layers[-3:]
+
+    #     with torch.no_grad():
+    #         for name, module in target_layers:
+    #             base_weight = module.base_layer.weight.detach()
+    #             base_fft = torch.fft.fftshift(torch.fft.fft2(base_weight))
+    #             delta_spectrum = module.get_dense_spectrum(sample=True)
+    #             delta_weight = torch.fft.ifft2(delta_spectrum).real * module.scaling
+    #             delta_re_fft = torch.fft.fftshift(torch.fft.fft2(delta_weight))
+
+    #             safe_name = name.replace(".", "_")
+    #             base_fft_path = os.path.join(
+    #                 output_dir,
+    #                 f"round_{round_idx}_client_{self.id}_{safe_name}_base_fft.npy"
+    #             )
+    #             delta_spec_path = os.path.join(
+    #                 output_dir,
+    #                 f"round_{round_idx}_client_{self.id}_{safe_name}_delta_spectrum.npy"
+    #             )
+    #             delta_weight_path = os.path.join(
+    #                 output_dir,
+    #                 f"round_{round_idx}_client_{self.id}_{safe_name}_delta_weight.npy"
+    #             )
+    #             delta_re_fft_path = os.path.join(
+    #                 output_dir,
+    #                 f"round_{round_idx}_client_{self.id}_{safe_name}_delta_re_fft.npy"
+    #             )
+
+    #             np.save(base_fft_path, base_fft.detach().cpu().numpy())
+    #             np.save(delta_spec_path, delta_spectrum.detach().cpu().numpy())
+    #             np.save(delta_weight_path, delta_weight.detach().cpu().numpy())
+    #             np.save(delta_re_fft_path, delta_re_fft.detach().cpu().numpy())
+
+    #             base_vis = torch.log1p(base_fft.abs()).detach().cpu().numpy()
+    #             delta_vis = torch.log1p(delta_spectrum.abs()).detach().cpu().numpy()
+    #             delta_re_fft_vis = torch.log1p(delta_re_fft.abs()).detach().cpu().numpy()
+
+    #             plt.figure(figsize=(5, 4))
+    #             plt.imshow(base_vis, cmap="viridis", aspect="auto")
+    #             plt.colorbar()
+    #             plt.title(f"Base FFT | {safe_name}")
+    #             plt.tight_layout()
+    #             plt.savefig(
+    #                 os.path.join(
+    #                     output_dir,
+    #                     f"round_{round_idx}_client_{self.id}_{safe_name}_base_fft.png"
+    #                 ),
+    #                 dpi=200
+    #             )
+    #             plt.close()
+
+    #             dv_min, dv_max = np.percentile(delta_vis, [5, 99])
+    #             plt.figure(figsize=(5, 4))
+    #             plt.imshow(delta_vis, cmap="magma", aspect="auto", vmin=dv_min, vmax=dv_max)
+    #             plt.colorbar()
+    #             plt.title(f"Delta Spectrum | {safe_name}")
+    #             plt.tight_layout()
+    #             plt.savefig(
+    #                 os.path.join(
+    #                     output_dir,
+    #                     f"round_{round_idx}_client_{self.id}_{safe_name}_delta_spectrum.png"
+    #                 ),
+    #                 dpi=300
+    #             )
+    #             plt.close()
+
+    #             dr_min, dr_max = np.percentile(delta_re_fft_vis, [5, 99])
+    #             plt.figure(figsize=(5, 4))
+    #             plt.imshow(delta_re_fft_vis, cmap="magma", aspect="auto", vmin=dr_min, vmax=dr_max)
+    #             plt.colorbar()
+    #             plt.title(f"Delta Re-FFT | {safe_name}")
+    #             plt.tight_layout()
+    #             plt.savefig(
+    #                 os.path.join(
+    #                     output_dir,
+    #                     f"round_{round_idx}_client_{self.id}_{safe_name}_delta_re_fft.png"
+    #                 ),
+    #                 dpi=300
+    #             )
+    #             plt.close()
 
 

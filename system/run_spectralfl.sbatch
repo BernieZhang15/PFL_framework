@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#SBATCH -J FedFourierFT
+#SBATCH -J FedSpectralFL
 #SBATCH -p gpu-l40s
 #SBATCH -N 1
 #SBATCH -n 1
@@ -10,7 +10,6 @@
 #SBATCH -o runs/slurm-%x-%j.out
 #SBATCH -e runs/slurm-%x-%j.err
 
-# Don't use set -e as it causes issues with background processes
 set -uo pipefail
 
 cd "${SLURM_SUBMIT_DIR}"
@@ -23,17 +22,17 @@ conda activate PFL
 
 PY=${PY:-python}
 MAIN=main.py
-LR=0.01
-FR=1.0
-FLR=10
+LR=0.1
 SEEDS=(576)
-# SEEDS=(
-#     $((RANDOM % 100000))
-#     $((RANDOM % 100000))
-#     $((RANDOM % 100000))
-# )
-LOGDIR="./FedFourierFT/slurm-${SLURM_JOB_ID}"
+LOGDIR="./FedSpectralFL/slurm-${SLURM_JOB_ID}"
 mkdir -p "$LOGDIR"
+
+# FedSpectralFL hyperparameters
+GLOBAL_ROUNDS=200
+BETA=5          # proximal term coefficient
+SD_RATIO=0.4   # spectra truncation ratio
+LAMBDA_G=0.3   # spectral regularizer for global model
+LAMBDA_L=0.4   # spectral regularizer for personal model
 
 # Number of GPUs to use
 NUM_GPUS=3
@@ -41,13 +40,15 @@ NUM_GPUS=3
 echo "Job started at $(date)"
 echo "Working directory: $(pwd)"
 echo "Python: $(which $PY)"
-echo "LR: ${LR}, FR: ${FR}, Seeds: ${SEEDS[*]}"
+echo "LR: ${LR}, GLOBAL_ROUNDS: ${GLOBAL_ROUNDS}, BETA: ${BETA}, SD_RATIO: ${SD_RATIO}, LAMBDA_G: ${LAMBDA_G}, LAMBDA_L: ${LAMBDA_L}, Seeds: ${SEEDS[*]}"
 echo "Number of GPUs: ${NUM_GPUS}"
 
 # Datasets to run
 DATASETS=(
     "Cifar10-pat-2M"
     "Cifar10-pat-5M"
+    "Cifar10-pat-2S"
+    "Cifar10-pat-5S"
 )
 
 # Function to run experiment on specific GPU
@@ -56,9 +57,13 @@ run_experiment() {
     local dataset=$2
     local seed=$3
     local logfile="${LOGDIR}/${dataset}-seed${seed}.log"
-    
+
     echo "[GPU ${gpu_id}] Starting: dataset=${dataset}, seed=${seed}"
-    $PY "$MAIN" -data "$dataset" -lr "$LR" -fr "$FR" -dlrr "$FLR" -seed "$seed" -did "$gpu_id" > "$logfile" 2>&1
+    $PY "$MAIN" \
+        -m cnn -algo FedSpectralFL -nb 10 \
+        -data "$dataset" -lr "$LR" -gr "$GLOBAL_ROUNDS" -seed "$seed" -did "$gpu_id" \
+        -bt "$BETA" -sdr "$SD_RATIO" -lg "$LAMBDA_G" -ll "$LAMBDA_L" \
+        > "$logfile" 2>&1
     local exit_code=$?
     echo "[GPU ${gpu_id}] Finished: dataset=${dataset}, seed=${seed}, exit_code=${exit_code}"
     return $exit_code

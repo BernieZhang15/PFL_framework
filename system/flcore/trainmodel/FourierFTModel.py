@@ -81,24 +81,51 @@ class FourierFTLayer(nn.Module):
         return P
 
     def get_delta_weight(self) -> torch.Tensor:
+        # timing disabled
+        # import time
         self.device = self.base_layer.weight.device
+        # t0 = time.time()
         spectrum_eps = torch.randn(self.n_frequency, device=self.device)
         self.spectrum_sigma = torch.log1p(torch.exp(self.spectrum_rho))
         spectrum = self.spectrum_mu + self.spectrum_sigma * spectrum_eps
+        # t1 = time.time()
 
         indices = self.indices.to(self.device)
         dense_spectrum = torch.zeros(self.out_features, self.in_features, device=self.device)
         dense_spectrum[indices[0, :], indices[1, :]] = spectrum.float()
+        # t2 = time.time()
 
         # By default, ifft treat (0, 0) as low frequency
         # dense_spectrum = torch.fft.ifftshift(dense_spectrum)
+        # t3 = time.time()
         delta_weight = torch.fft.ifft2(dense_spectrum).real * self.scaling
+        # t4 = time.time()
         # print("Weight ratio:", torch.norm(self.base_layer.weight)/torch.norm(delta_weight))
+        # timing print disabled
         return delta_weight
 
+    def get_dense_spectrum(self, sample: bool = True) -> torch.Tensor:
+        self.device = self.base_layer.weight.device
+        self.spectrum_sigma = torch.log1p(torch.exp(self.spectrum_rho))
+        if sample:
+            spectrum_eps = torch.randn(self.n_frequency, device=self.device)
+            spectrum = self.spectrum_mu + self.spectrum_sigma * spectrum_eps
+        else:
+            spectrum = self.spectrum_mu
+
+        indices = self.indices.to(self.device)
+        dense_spectrum = torch.zeros(self.out_features, self.in_features, device=self.device)
+        dense_spectrum[indices[0, :], indices[1, :]] = spectrum.float()
+        return dense_spectrum
+
     def kl_loss(self):
+        # timing disabled
+        # import time
+        # t0 = time.time()
         self.spectrum_sigma = torch.log1p(torch.exp(self.spectrum_rho))
         kl = calculate_kl(self.spectrum_mu, self.spectrum_sigma, self.prior_mu, self.prior_sigma)
+        # t1 = time.time()
+        # print(f"    [FourierFTLayer] KL散度计算: {t1-t0:.6f}s")
         return kl
 
 class FourierFTLinear(FourierFTLayer):
@@ -160,30 +187,194 @@ class FTFedAvgCNN(nn.Module):
         fc2 = nn.Linear(512, 256, bias=True)
         fc3 = nn.Linear(256, num_classes, bias=True)
 
-        self.fc1 = FourierFTLinear(fc1, n_frequency=n_freq1, scaling=350, ens_num=ens_num, freq_bias=freq_bias, fc=0.6, bandwidth=0.25)
-        self.fc2 = FourierFTLinear(fc2, n_frequency=n_freq2, scaling=200, ens_num=ens_num, freq_bias=freq_bias, fc=0.7, bandwidth=0.15)
+        self.fc1 = FourierFTLinear(fc1, n_frequency=n_freq1, scaling=350, ens_num=ens_num, freq_bias=freq_bias, fc=0.8, bandwidth=0.25)
+        self.fc2 = FourierFTLinear(fc2, n_frequency=n_freq2, scaling=200, ens_num=ens_num, freq_bias=freq_bias, fc=0.8, bandwidth=0.15)
         self.fc3 = FourierFTLinear(fc3, n_frequency=n_freq3, scaling=100, ens_num=ens_num, freq_bias=freq_bias, fc=0.8, bandwidth=0.2)
 
 
     def forward(self, data_input: torch.Tensor) -> torch.Tensor:
+        # timing disabled
+        # import time
+        # start_time = time.time()
+
         batch_size = data_input.shape[0]
+        # t0 = time.time()
         out = torch.tile(data_input, (self.ens_num, 1, 1, 1))
+        # t1 = time.time()
+        # print(f"[Forward] tile输入: {t1-t0:.6f}s")
 
+        # t0 = time.time()
         out = self.conv1(out)
-        out = self.conv2(out)
-        out = self.conv3(out)
+        # t1 = time.time()
+        # print(f"[Forward] conv1: {t1-t0:.6f}s")
 
+        # t0 = time.time()
+        out = self.conv2(out)
+        # t1 = time.time()
+        # print(f"[Forward] conv2: {t1-t0:.6f}s")
+
+        # t0 = time.time()
+        out = self.conv3(out)
+        # t1 = time.time()
+        # print(f"[Forward] conv3: {t1-t0:.6f}s")
+
+        # t0 = time.time()
         out = out.reshape(self.ens_num, batch_size, -1)
         out = torch.flatten(out, start_dim=2)
+        # t1 = time.time()
+        # print(f"[Forward] flatten: {t1-t0:.6f}s")
 
+        # t0 = time.time()
         out = self.fc1(out)
-        out = F.relu(out, inplace=True)
+        # t1 = time.time()
+        # print(f"[Forward] fc1(FourierFT): {t1-t0:.6f}s")
 
+        # t0 = time.time()
+        out = F.relu(out, inplace=True)
+        # t1 = time.time()
+        # print(f"[Forward] relu1: {t1-t0:.6f}s")
+
+        # t0 = time.time()
         out = self.fc2(out)
+        # t1 = time.time()
+        # print(f"[Forward] fc2(FourierFT): {t1-t0:.6f}s")
+
+        # t0 = time.time()
         out = F.relu(out, inplace=True)
+        # t1 = time.time()
+        # print(f"[Forward] relu2: {t1-t0:.6f}s")
 
+        # t0 = time.time()
         out = self.fc3(out)
+        # t1 = time.time()
+        # print(f"[Forward] fc3(FourierFT): {t1-t0:.6f}s")
 
+        # t0 = time.time()
+        kl = 0.0
+        for module in self.modules():
+            if hasattr(module, 'kl_loss'):
+                kl = kl + module.kl_loss()
+        # t1 = time.time()
+        # print(f"[Forward] KL总计: {t1-t0:.6f}s")
+
+        # end_time = time.time()
+        # print(f"[Client Forward] 总用时: {end_time - start_time:.6f} seconds")
+
+        return out, kl
+
+class FTTransformerBlock(nn.Module):
+    """Transformer block with shared attention and FourierFT MLP."""
+    def __init__(self, dim, num_heads, mlp_ratio=4.0, ens_num=4, freq_ratio=1.0,
+                 freq_bias=True, drop=0.0, seed_offset=0):
+        super().__init__()
+        self.norm1 = nn.LayerNorm(dim)
+        self.attn = nn.MultiheadAttention(dim, num_heads, dropout=drop, batch_first=True)
+        self.norm2 = nn.LayerNorm(dim)
+
+        mlp_hidden = int(dim * mlp_ratio)
+        n_freq1 = max(1, int(1024 * freq_ratio))
+        n_freq2 = max(1, int(512 * freq_ratio))
+
+        fc1 = nn.Linear(dim, mlp_hidden)
+        fc2 = nn.Linear(mlp_hidden, dim)
+        self.mlp_fc1 = FourierFTLinear(fc1, n_frequency=n_freq1, scaling=200, ens_num=ens_num,
+                                       freq_bias=freq_bias, random_loc_seed=777 + seed_offset,
+                                       fc=0.8, bandwidth=0.2)
+        self.mlp_fc2 = FourierFTLinear(fc2, n_frequency=n_freq2, scaling=200, ens_num=ens_num,
+                                       freq_bias=freq_bias, random_loc_seed=888 + seed_offset,
+                                       fc=0.8, bandwidth=0.2)
+
+    def forward(self, x, ens_num, batch_size):
+        # x: (ens*batch, seq_len, dim)
+        seq_len = x.shape[1]
+        dim = x.shape[2]
+
+        # Self-attention (shared weights)
+        residual = x
+        x = self.norm1(x)
+        x, _ = self.attn(x, x, x)
+        x = residual + x
+
+        # MLP with FourierFT
+        residual = x
+        x = self.norm2(x)
+        # Reshape: (ens*batch, seq_len, dim) -> (ens, batch*seq_len, dim)
+        x = x.reshape(ens_num, batch_size * seq_len, dim)
+        x = self.mlp_fc1(x)
+        x = F.gelu(x)
+        x = self.mlp_fc2(x)
+        # Reshape back: (ens, batch*seq_len, dim) -> (ens*batch, seq_len, dim)
+        x = x.reshape(ens_num * batch_size, seq_len, dim)
+
+        x = residual + x
+        return x
+
+
+class FTFedViT(nn.Module):
+    def __init__(self, num_classes=10, ens_num=4, dim=256, freq_ratio=1.0, freq_bias=True,
+                 in_channels=3, img_size=32, patch_size=4, depth=4, num_heads=4, mlp_ratio=2.0):
+        super().__init__()
+        self.ens_num = ens_num
+        self.freq_ratio = freq_ratio
+        self.freq_bias = freq_bias
+        self.dim = dim
+        self.num_patches = (img_size // patch_size) ** 2
+
+        # Patch embedding (shared)
+        self.patch_embed = nn.Conv2d(in_channels, dim, kernel_size=patch_size, stride=patch_size)
+
+        # CLS token + positional embedding
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, dim))
+        self.pos_embed = nn.Parameter(torch.zeros(1, self.num_patches + 1, dim))
+        nn.init.trunc_normal_(self.cls_token, std=0.02)
+        nn.init.trunc_normal_(self.pos_embed, std=0.02)
+
+        # Transformer blocks
+        self.blocks = nn.ModuleList([
+            FTTransformerBlock(dim, num_heads, mlp_ratio, ens_num, freq_ratio, freq_bias,
+                               seed_offset=i * 100)
+            for i in range(depth)
+        ])
+
+        self.norm = nn.LayerNorm(dim)
+
+        # Classification head (FourierFT)
+        head_linear = nn.Linear(dim, num_classes)
+        n_freq_head = max(1, int(256 * freq_ratio))
+        self.head = FourierFTLinear(head_linear, n_frequency=n_freq_head, scaling=100,
+                                    ens_num=ens_num, freq_bias=freq_bias, fc=0.8, bandwidth=0.2)
+
+    def forward(self, data_input: torch.Tensor) -> torch.Tensor:
+        batch_size = data_input.shape[0]
+
+        # Tile input for ensemble: (batch, C, H, W) -> (ens*batch, C, H, W)
+        x = torch.tile(data_input, (self.ens_num, 1, 1, 1))
+
+        # Patch embedding: (ens*batch, dim, H/P, W/P) -> (ens*batch, num_patches, dim)
+        x = self.patch_embed(x)
+        x = x.flatten(2).transpose(1, 2)
+
+        # Prepend CLS token + add positional embedding
+        cls_tokens = self.cls_token.expand(x.shape[0], -1, -1)
+        x = torch.cat([cls_tokens, x], dim=1)
+        x = x + self.pos_embed
+
+        # Transformer blocks
+        for block in self.blocks:
+            x = block(x, self.ens_num, batch_size)
+
+        x = self.norm(x)
+
+        # CLS token output: (ens*batch, dim)
+        x = x[:, 0]
+
+        # Reshape for FourierFT head: (ens, batch, dim)
+        x = x.reshape(self.ens_num, batch_size, self.dim)
+
+        # Classification
+        out = self.head(x)  # (ens, batch, num_classes)
+
+        # KL loss
         kl = 0.0
         for module in self.modules():
             if hasattr(module, 'kl_loss'):
@@ -195,15 +386,27 @@ class FTFedAvgCNN(nn.Module):
 if __name__ == "__main__":
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = FTFedAvgCNN().to(device)
 
+    # Test FTFedAvgCNN
+    model = FTFedAvgCNN().to(device)
     x = torch.randn(20, 3, 32, 32).to(device)
     target = torch.randn(20, 10).to(device)
-
     ens_y, kl_loss = model(x)
     ens_y = torch.mean(ens_y, dim=0)
     loss = F.mse_loss(ens_y, target)
     loss.backward()
+    print("FTFedAvgCNN OK")
+
+    # Test FTFedViT
+    vit = FTFedViT(num_classes=10, ens_num=4, dim=256, depth=4, num_heads=4,
+                   img_size=32, patch_size=4, mlp_ratio=2.0).to(device)
+    x2 = torch.randn(8, 3, 32, 32).to(device)
+    target2 = torch.randn(8, 10).to(device)
+    ens_y2, kl2 = vit(x2)
+    ens_y2 = torch.mean(ens_y2, dim=0)
+    loss2 = F.mse_loss(ens_y2, target2) + 1e-4 * kl2
+    loss2.backward()
+    print(f"FTFedViT OK, output shape: {ens_y2.shape}, kl: {kl2.item():.4f}")
 
 
 

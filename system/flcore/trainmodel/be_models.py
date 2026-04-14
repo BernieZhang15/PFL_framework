@@ -1,5 +1,5 @@
 import math
-import time
+# import time
 import torch
 import numpy as np
 import torch.nn.functional as F
@@ -568,8 +568,9 @@ class LRFedAvgCNN(nn.Module):
             module.reset_parameters()
 
     def forward(self, x, rank_1_matrix=None):
-        x = torch.tile(x, (self.ens, 1, 1, 1))
 
+        x = torch.tile(x, (self.ens, 1, 1, 1))
+    
         weights = {}
         if rank_1_matrix is not None:
             weights[0] = [rank_1_matrix['conv1.alpha_mu'], rank_1_matrix['conv1.alpha_rho'],
@@ -585,32 +586,74 @@ class LRFedAvgCNN(nn.Module):
             weights[5] = [rank_1_matrix['fc3.alpha_mu'], rank_1_matrix['fc3.alpha_rho'],
                           rank_1_matrix['fc3.gamma_mu'], rank_1_matrix['fc3.gamma_rho']]
 
+        # t0 = time.time()
         out = self.conv1(x, weights.get(0))
+        # t1 = time.time()
+        # print(f"[LRFedAvgCNN] conv1 (sample/conv): {t1-t0:.6f}s")
+        # t0 = time.time()
         out = F.relu(out, inplace=True)
         out = F.max_pool2d(out, kernel_size=(2, 2))
+        # t1 = time.time()
+        # print(f"[LRFedAvgCNN] relu+pool1: {t1-t0:.6f}s")
 
+        # t0 = time.time()
         out = self.conv2(out, weights.get(1))
+        # t1 = time.time()
+        # print(f"[LRFedAvgCNN] conv2 (sample/conv): {t1-t0:.6f}s")
+        # t0 = time.time()
         out = F.relu(out, inplace=True)
         out = F.max_pool2d(out, kernel_size=(2, 2))
+        # t1 = time.time()
+        # print(f"[LRFedAvgCNN] relu+pool2: {t1-t0:.6f}s")
 
+        # t0 = time.time()
         out = self.conv3(out, weights.get(2))
+        # t1 = time.time()
+        # print(f"[LRFedAvgCNN] conv3 (sample/conv): {t1-t0:.6f}s")
+        # t0 = time.time()
         out = F.relu(out, inplace=True)
         out = F.max_pool2d(out, kernel_size=(2, 2))
+        # t1 = time.time()
+        # print(f"[LRFedAvgCNN] relu+pool3: {t1-t0:.6f}s")
 
+        # t0 = time.time()
         out = torch.flatten(out, 1)
+        # t1 = time.time()
+        # print(f"[LRFedAvgCNN] flatten: {t1-t0:.6f}s")
 
+        # t0 = time.time()
         out = self.fc1(out, weights.get(3))
+        # t1 = time.time()
+        # print(f"[LRFedAvgCNN] fc1 (sample/linear): {t1-t0:.6f}s")
+        # t0 = time.time()
         out = F.relu(out, inplace=True)
+        # t1 = time.time()
+        # print(f"[LRFedAvgCNN] relu1: {t1-t0:.6f}s")
 
+        # t0 = time.time()
         out = self.fc2(out, weights.get(4))
+        # t1 = time.time()
+        # print(f"[LRFedAvgCNN] fc2 (sample/linear): {t1-t0:.6f}s")
+        # t0 = time.time()
         out = F.relu(out, inplace=True)
+        # t1 = time.time()
+        # print(f"[LRFedAvgCNN] relu2: {t1-t0:.6f}s")
 
+        # t0 = time.time()
         out = self.fc3(out, weights.get(5))
+        # t1 = time.time()
+        # print(f"[LRFedAvgCNN] fc3 (sample/linear): {t1-t0:.6f}s")
 
+        # t0 = time.time()
         kl = 0.0
         for module in self.modules():
             if hasattr(module, 'kl_loss'):
                 kl = kl + module.kl_loss()
+        # t1 = time.time()
+        # print(f"[LRFedAvgCNN] KL gather (调用子模块KL总计，子模块内已打印分项): {t1-t0:.6f}s")
+
+        # end_time = time.time()
+        # print(f"[LRFedAvgCNN Forward] 总用时: {end_time - start_time:.6f} seconds")
 
         return out, kl
 
@@ -726,6 +769,126 @@ class HardConcreteQuantizer(nn.Module):
         return v_alpha_mu, v_alpha_sigma
 
 
+class LRTransformerBlock(nn.Module):
+    """Transformer block with shared attention and LRBayes MLP."""
+    def __init__(self, dim, num_heads, mlp_ratio=4.0, ens=4, rank=4, drop=0.0,
+                 device=None, adaptive=False, quan_method=None):
+        super().__init__()
+        self.norm1 = nn.LayerNorm(dim)
+        self.attn = nn.MultiheadAttention(dim, num_heads, dropout=drop, batch_first=True)
+        self.norm2 = nn.LayerNorm(dim)
+
+        mlp_hidden = int(dim * mlp_ratio)
+        self.mlp_fc1 = LRBayesLinear(dim, mlp_hidden, ensemble=ens, rank=rank, device=device,
+                                     adaptive=adaptive, quan_method=quan_method)
+        self.mlp_fc2 = LRBayesLinear(mlp_hidden, dim, ensemble=ens, rank=rank, device=device,
+                                     adaptive=adaptive, quan_method=quan_method)
+
+    def forward(self, x, ens, batch_size, fc1_weights=None, fc2_weights=None):
+        # x: (ens*batch, seq_len, dim)
+        seq_len = x.shape[1]
+        dim = x.shape[2]
+
+        # Self-attention (shared weights)
+        residual = x
+        x = self.norm1(x)
+        x, _ = self.attn(x, x, x)
+        x = residual + x
+
+        # MLP with LRBayes
+        residual = x
+        x = self.norm2(x)
+        # Reshape: (ens*batch, seq_len, dim) -> (ens*batch*seq_len, dim)
+        x = x.reshape(ens * batch_size * seq_len, dim)
+        x = self.mlp_fc1(x, fc1_weights)
+        x = F.gelu(x)
+        x = self.mlp_fc2(x, fc2_weights)
+        # Reshape back: (ens*batch*seq_len, dim) -> (ens*batch, seq_len, dim)
+        x = x.reshape(ens * batch_size, seq_len, -1)
+        x = residual + x
+        return x
+
+
+class LRFedViT(nn.Module):
+    def __init__(self, num_classes=10, ens=4, dim=256, rank=4,
+                 in_channels=3, img_size=32, patch_size=4, depth=4, num_heads=4, mlp_ratio=2.0,
+                 device=None, adaptive=False, quan_method=None):
+        super().__init__()
+        self.ens = ens
+        self.dim = dim
+        self.num_patches = (img_size // patch_size) ** 2
+
+        # Patch embedding (shared)
+        self.patch_embed = nn.Conv2d(in_channels, dim, kernel_size=patch_size, stride=patch_size)
+
+        # CLS token + positional embedding
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, dim))
+        self.pos_embed = nn.Parameter(torch.zeros(1, self.num_patches + 1, dim))
+        nn.init.trunc_normal_(self.cls_token, std=0.02)
+        nn.init.trunc_normal_(self.pos_embed, std=0.02)
+
+        # Transformer blocks
+        self.blocks = nn.ModuleList([
+            LRTransformerBlock(dim, num_heads, mlp_ratio, ens, rank, device=device,
+                               adaptive=adaptive, quan_method=quan_method)
+            for _ in range(depth)
+        ])
+
+        self.norm = nn.LayerNorm(dim)
+
+        # Classification head (LRBayes)
+        self.fc = LRBayesLinear(dim, num_classes, ensemble=ens, rank=rank, device=device,
+                                adaptive=adaptive, quan_method=quan_method)
+
+    @staticmethod
+    def _get_lr_weights(rank_1_matrix, prefix):
+        if rank_1_matrix is None:
+            return None
+        keys = [f'{prefix}.alpha_mu', f'{prefix}.alpha_rho',
+                f'{prefix}.gamma_mu', f'{prefix}.gamma_rho']
+        if all(k in rank_1_matrix for k in keys):
+            return [rank_1_matrix[k] for k in keys]
+        return None
+
+    def forward(self, x, rank_1_matrix=None):
+        batch_size = x.shape[0]
+
+        # Tile input for ensemble: (batch, C, H, W) -> (ens*batch, C, H, W)
+        x = torch.tile(x, (self.ens, 1, 1, 1))
+
+        # Patch embedding: (ens*batch, dim, H/P, W/P) -> (ens*batch, num_patches, dim)
+        x = self.patch_embed(x)
+        x = x.flatten(2).transpose(1, 2)
+
+        # Prepend CLS token + add positional embedding
+        cls_tokens = self.cls_token.expand(x.shape[0], -1, -1)
+        x = torch.cat([cls_tokens, x], dim=1)
+        x = x + self.pos_embed
+
+        # Transformer blocks
+        for i, block in enumerate(self.blocks):
+            fc1_w = self._get_lr_weights(rank_1_matrix, f'blocks.{i}.mlp_fc1')
+            fc2_w = self._get_lr_weights(rank_1_matrix, f'blocks.{i}.mlp_fc2')
+            x = block(x, self.ens, batch_size, fc1_w, fc2_w)
+
+        x = self.norm(x)
+
+        # CLS token output: (ens*batch, dim)
+        x = x[:, 0]
+
+        # Classification head: (ens*batch, num_classes)
+        fc_weights = self._get_lr_weights(rank_1_matrix, 'fc')
+        out = self.fc(x, fc_weights)
+
+        # KL loss
+        kl = 0.0
+        for module in self.modules():
+            if hasattr(module, 'kl_loss'):
+                kl = kl + module.kl_loss()
+
+        return out, kl
+
+
 if __name__ == '__main__':
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -750,7 +913,6 @@ if __name__ == '__main__':
 
     criterion = nn.CrossEntropyLoss()
 
-    start_time = time.time()
 
     for i in range(1000):
 
@@ -764,7 +926,6 @@ if __name__ == '__main__':
 
         optim.step()
 
-    print((time.time() - start_time) / 1000)
 
 
 

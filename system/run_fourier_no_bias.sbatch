@@ -28,9 +28,9 @@ FLR=1
 FR=1.0
 FB=false
 SEEDS=(
-    $((RANDOM % 100000))
-    $((RANDOM % 100000))
-    $((RANDOM % 100000))
+    573
+    592
+    567
 )
 LOGDIR="./FedFourierFT_no_bias/slurm-${SLURM_JOB_ID}"
 mkdir -p "$LOGDIR"

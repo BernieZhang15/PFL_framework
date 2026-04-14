@@ -28,9 +28,9 @@ FR=1.0
 FLR=10
 FB=true
 SEEDS=(
-    $((RANDOM % 100000))
-    $((RANDOM % 100000))
-    $((RANDOM % 100000))
+    573
+    592
+    567
 )
 LOGDIR="./FedFourierFT_sl_sweep_cifar100_5M/slurm-${SLURM_JOB_ID}"
 mkdir -p "$LOGDIR"
@@ -45,8 +45,7 @@ echo "LR: ${LR}, FR: ${FR}, FB: ${FB}, Seeds: ${SEEDS[*]}"
 echo "Number of GPUs: ${NUM_GPUS}"
 
 # spec_lambda values: 0.1 ~ 1.0
-SL_VALUES=(0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0)
-
+SL_VALUES=(1 2 3 4 5 6 7 8 9 10)
 # Datasets to run
 DATASETS=(
     "Cifar100-pat-5M"

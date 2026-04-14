@@ -34,8 +34,8 @@ def generate_dataset(dir_path, num_clients, num_classes, niid, balance, partitio
     os.makedirs(dir_path, exist_ok=True)
 
     config_path = os.path.join(dir_path, "config.json")
-    train_path = os.path.join(dir_path, "train")
-    test_path = os.path.join(dir_path, "test")
+    train_path = os.path.join(dir_path, "train/")
+    test_path = os.path.join(dir_path, "test/")
 
     if check(config_path, train_path, test_path, num_clients, num_classes, niid, balance, partition):
         return
@@ -45,8 +45,8 @@ def generate_dataset(dir_path, num_clients, num_classes, niid, balance, partitio
         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
     ])
 
-    trainset = ImageFolderCustom('/home/largeDisk/boning/data/tiny-imagenet-200/train/', transform=transform)
-    testset = ImageFolderCustom('/home/largeDisk/boning/data/tiny-imagenet-200/val/', transform=transform)
+    trainset = ImageFolderCustom('./Tiny-imagenet/train/', transform=transform)
+    testset = ImageFolderCustom('./Tiny-imagenet/val/', transform=transform)
 
     train_images, train_labels = dataset_to_numpy(trainset)
     test_images, test_labels = dataset_to_numpy(testset)
@@ -61,7 +61,7 @@ def generate_dataset(dir_path, num_clients, num_classes, niid, balance, partitio
 
 if __name__ == "__main__":
     dir_path = "./tiny-imagenet-fed/"
-    num_clients = 10
+    num_clients = 50
     num_classes = 200
     niid = True
     balance = True

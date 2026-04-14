@@ -28,9 +28,9 @@ FR=1.0
 FLR=1
 FB=true
 SEEDS=(
-    $((RANDOM % 100000))
-    $((RANDOM % 100000))
-    $((RANDOM % 100000))
+    573
+    592
+    567
 )
 LOGDIR="./FedFourierFT_sl_sweep/slurm-${SLURM_JOB_ID}"
 mkdir -p "$LOGDIR"
@@ -45,7 +45,7 @@ echo "freq_ratio: ${FR}, freq_bias: ${FB}, seeds: ${SEEDS[*]}"
 echo "Number of GPUs: ${NUM_GPUS}"
 
 # spec_lambda values: 0, 0.2, 0.4, 0.6, 0.8
-SL_VALUES=(0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0)
+SL_VALUES=(1.6 1.8 2.0)
 
 # Datasets to run
 DATASETS=(

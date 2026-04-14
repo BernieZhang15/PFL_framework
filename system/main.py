@@ -42,6 +42,9 @@ from flcore.servers.serverpcl import FedPCL
 from flcore.servers.servercp import FedCP
 from flcore.servers.servergpfl import GPFL
 from flcore.servers.serverFourierFT import FedFourierFT
+from flcore.servers.serverFedGMM import FedGMM as FedGMMServer
+from flcore.servers.serverFedPop import FedPop as FedPopServer
+from flcore.servers.serverSpectralFL import FedSpectralFL
 
 from flcore.trainmodel.models import *
 from flcore.trainmodel.bilstm import *
@@ -135,7 +138,21 @@ def run(args):
                 args.model = FTFedAvgCNN(num_classes=args.num_classes, ens_num=args.num_ensemble, freq_ratio=args.freq_ratio, freq_bias=args.freq_bias).to(args.device)
             elif "mnist" in args.dataset:
                 args.model = LRFedAvgCNN(in_features=1, num_classes=args.num_classes, ens=args.num_ensemble, dim=1152).to(args.device)
-
+        elif model_str == "FTFedViT":
+            if "imagenet" in args.dataset.lower():
+                vit_img_size = 64
+            else:
+                vit_img_size = 32
+            args.model = FTFedViT(num_classes=args.num_classes, ens_num=args.num_ensemble, dim=256, in_channels=3, img_size=vit_img_size,
+                                patch_size=4, depth=6, num_heads=4, mlp_ratio=2.0, freq_ratio=args.freq_ratio, freq_bias=args.freq_bias).to(args.device)
+        elif model_str == "LRFedViT":
+            if "imagenet" in args.dataset.lower():
+                vit_img_size = 64
+            else:
+                vit_img_size = 32
+            args.model = LRFedViT(num_classes=args.num_classes, ens=args.num_ensemble, dim=256, rank=args.rank,
+                                  in_channels=3, img_size=vit_img_size, patch_size=4, depth=6, num_heads=4, mlp_ratio=2.0,
+                                  device=args.device, adaptive=args.adaptive_rank, quan_method=args.quan_method).to(args.device)
         elif model_str == "pFB_cnn":
             if "Cifar10" in args.dataset:
                 args.model = pBNN(device=args.device, output_dim=args.num_classes).to(args.device)
@@ -143,6 +160,15 @@ def run(args):
                 args.model = pBNN(input_dim=1, device=args.device, output_dim=args.num_classes, dim=1152).to(args.device)
             elif "imagenet" in args.dataset:
                 args.model = resnet18(device=args.device, num_classes=args.num_classes).to(args.device)
+
+        elif model_str == "pFB_vit":
+            if "imagenet" in args.dataset.lower():
+                vit_img_size = 64
+            else:
+                vit_img_size = 32
+            args.model = pBNN_ViT(device=args.device, num_classes=args.num_classes, dim=256,
+                                  in_channels=3, img_size=vit_img_size, patch_size=4,
+                                  depth=6, num_heads=4, mlp_ratio=2.0).to(args.device)
 
         elif model_str == "resnet":
             args.model = torchvision.models.resnet18(pretrained=False, num_classes=args.num_classes).to(args.device)
@@ -189,14 +215,36 @@ def run(args):
                 args.model = HARCNN(9, dim_hidden=3712, num_classes=args.num_classes, conv_kernel_size=(1, 9),
                                     pool_kernel_size=(1, 2)).to(args.device)
 
+        elif model_str == "fedvit":
+            if "imagenet" in args.dataset.lower():
+                vit_img_size = 64
+            else:
+                vit_img_size = 32
+            args.model = FedViT(num_classes=args.num_classes, dim=256, in_channels=3, img_size=vit_img_size,
+                                patch_size=4, depth=4, num_heads=4, mlp_ratio=2.0).to(args.device)
+
+
         else:
             raise NotImplementedError
 
         print(args.model)
 
+        # Normalize classifier head attribute name to 'fc' for compatibility.
+        # When the original model uses 'head' instead of 'fc', we alias it
+        # and define a helper so that nulling 'fc' also nulls 'head'.
+        _has_head_attr = hasattr(args.model, 'head') and not hasattr(args.model, 'fc')
+        if _has_head_attr:
+            args.model.fc = args.model.head
+
+        def _null_fc(model):
+            """Set fc (and head, if it was the original attr) to Identity."""
+            model.fc = nn.Identity()
+            if _has_head_attr:
+                model.head = model.fc
+
         if args.algorithm == "FedAvg":
             args.head = copy.deepcopy(args.model.fc)
-            args.model.fc = nn.Identity()
+            _null_fc(args.model)
             args.model = BaseHeadSplit(args.model, args.head)
             server = FedAvg(args, i)
 
@@ -232,7 +280,7 @@ def run(args):
 
         elif args.algorithm == "FedPer":
             args.head = copy.deepcopy(args.model.fc)
-            args.model.fc = nn.Identity()
+            _null_fc(args.model)
             args.model = BaseHeadSplit(args.model, args.head)
             server = FedPer(args, i)
 
@@ -241,13 +289,13 @@ def run(args):
 
         elif args.algorithm == "FedRep":
             args.head = copy.deepcopy(args.model.fc)
-            args.model.fc = nn.Identity()
+            _null_fc(args.model)
             args.model = BaseHeadSplit(args.model, args.head)
             server = FedRep(args, i)
 
         elif args.algorithm == "FedPHP":
             args.head = copy.deepcopy(args.model.fc)
-            args.model.fc = nn.Identity()
+            _null_fc(args.model)
             args.model = BaseHeadSplit(args.model, args.head)
             server = FedPHP(args, i)
 
@@ -256,7 +304,7 @@ def run(args):
 
         elif args.algorithm == "FedROD":
             args.head = copy.deepcopy(args.model.fc)
-            args.model.fc = nn.Identity()
+            _null_fc(args.model)
             args.model = BaseHeadSplit(args.model, args.head)
             server = FedROD(args, i)
 
@@ -265,7 +313,7 @@ def run(args):
 
         elif args.algorithm == "FedProto":
             args.head = copy.deepcopy(args.model.fc)
-            args.model.fc = nn.Identity()
+            _null_fc(args.model)
             args.model = BaseHeadSplit(args.model, args.head)
             server = FedProto(args, i)
 
@@ -274,13 +322,13 @@ def run(args):
 
         elif args.algorithm == "MOON":
             args.head = copy.deepcopy(args.model.fc)
-            args.model.fc = nn.Identity()
+            _null_fc(args.model)
             args.model = BaseHeadSplit(args.model, args.head)
             server = MOON(args, i)
 
         elif args.algorithm == "FedBABU":
             args.head = copy.deepcopy(args.model.fc)
-            args.model.fc = nn.Identity()
+            _null_fc(args.model)
             args.model = BaseHeadSplit(args.model, args.head)
             server = FedBABU(args, i)
 
@@ -289,7 +337,7 @@ def run(args):
 
         elif args.algorithm == "FedGen":
             args.head = copy.deepcopy(args.model.fc)
-            args.model.fc = nn.Identity()
+            _null_fc(args.model)
             args.model = BaseHeadSplit(args.model, args.head)
             server = FedGen(args, i)
 
@@ -304,19 +352,19 @@ def run(args):
 
         elif args.algorithm == "FedPAC":
             args.head = copy.deepcopy(args.model.fc)
-            args.model.fc = nn.Identity()
+            _null_fc(args.model)
             args.model = BaseHeadSplit(args.model, args.head)
             server = FedPAC(args, i)
 
         elif args.algorithm == "LG-FedAvg":
             args.head = copy.deepcopy(args.model.fc)
-            args.model.fc = nn.Identity()
+            _null_fc(args.model)
             args.model = BaseHeadSplit(args.model, args.head)
             server = LG_FedAvg(args, i)
 
         elif args.algorithm == "FedGC":
             args.head = copy.deepcopy(args.model.fc)
-            args.model.fc = nn.Identity()
+            _null_fc(args.model)
             args.model = BaseHeadSplit(args.model, args.head)
             server = FedGC(args, i)
 
@@ -325,25 +373,37 @@ def run(args):
 
         elif args.algorithm == "FedKD":
             args.head = copy.deepcopy(args.model.fc)
-            args.model.fc = nn.Identity()
+            _null_fc(args.model)
             args.model = BaseHeadSplit(args.model, args.head)
             server = FedKD(args, i)
 
         elif args.algorithm == "FedPCL":
-            args.model.fc = nn.Identity()
+            _null_fc(args.model)
             server = FedPCL(args, i)
 
         elif args.algorithm == "FedCP":
             args.head = copy.deepcopy(args.model.fc)
-            args.model.fc = nn.Identity()
+            _null_fc(args.model)
             args.model = BaseHeadSplit(args.model, args.head)
             server = FedCP(args, i)
 
         elif args.algorithm == "GPFL":
             args.head = copy.deepcopy(args.model.fc)
-            args.model.fc = nn.Identity()
+            _null_fc(args.model)
             args.model = BaseHeadSplit(args.model, args.head)
             server = GPFL(args, i)
+
+        elif args.algorithm == "FedSpectralFL":
+            server = FedSpectralFL(args, i)
+
+        elif args.algorithm == "FedGMM":
+            server = FedGMMServer(args, i)
+
+        elif args.algorithm == "FedPop":
+            args.head = copy.deepcopy(args.model.fc)
+            _null_fc(args.model)
+            args.model = BaseHeadSplit(args.model, args.head)
+            server = FedPopServer(args, i)
             
         else:
             raise NotImplementedError
@@ -373,8 +433,17 @@ if __name__ == "__main__":
             6: ["cnn", "PerAvg"],
             7: ["cnn", "pFedMe"],
             8: ["cnn", "FedRep"],
-            9: ["Fourier_bayes_cnn", "FedFourierFT"]}
-    a_num = 9
+            9: ["Fourier_bayes_cnn", "FedFourierFT"],
+            10: ["FTFedViT", "FedFourierFT"],
+            11: ["FedViT", "FedAvg"],
+            12: ["cnn", "FedGMM"],
+            13: ["cnn", "FedPop"],
+            14: ["LRFedViT", "FedMetaBayes"],
+            15: ["fedvit", "PerAvg"],
+            16: ["fedvit", "pFedMe"],
+            17: ["cnn", "FedSpectralFL"],
+            18: ["pFB_vit", "pFedBayes"],}
+    a_num = 15
 
     dataset = ["Cifar10-dir-0.1", "Cifar10-pat-2N", "Cifar10-pat-5N", "Cifar10-pat-2S", "Cifar10-pat-5S", "Cifar10-pat-2M", "Cifar10-pat-5M", "Cifar100-pat-5S", "Cifar100-pat-5M", "Tiny-imagenet"]
 
@@ -382,12 +451,12 @@ if __name__ == "__main__":
     parser.add_argument('-seed', "--seed", type=int, default=573)
     parser.add_argument('-dev', "--device", type=str, default="cuda", choices=["cpu", "cuda"])
     parser.add_argument('-did', "--device_id", type=str, default="0")
-    parser.add_argument('-data', "--dataset", type=str, default=dataset[4])
-    parser.add_argument('-nb', "--num_classes", type=int, default=10)
+    parser.add_argument('-data', "--dataset", type=str, default=dataset[9])
+    parser.add_argument('-nb', "--num_classes", type=int, default=200)
     parser.add_argument('-m', "--model", type=str, default=algo[a_num][0])
     parser.add_argument('-algo', "--algorithm", type=str, default=algo[a_num][1])
     parser.add_argument('-lbs', "--batch_size", type=int, default=32)
-    parser.add_argument('-lr', "--local_learning_rate", type=float, default=0.1, help="Local learning rate")
+    parser.add_argument('-lr', "--local_learning_rate", type=float, default=0.01, help="Local learning rate")
     parser.add_argument('-ld', "--learning_rate_decay", type=bool, default=True)
     parser.add_argument('-ldg', "--learning_rate_decay_gamma", type=float, default=0.99)
     parser.add_argument('-gr', "--global_rounds", type=int, default=1000)
@@ -410,7 +479,7 @@ if __name__ == "__main__":
                         help="Whether to group and select clients at each round according to time cost")
     parser.add_argument('-tth', "--time_threshold", type=float, default=10000,
                         help="The threshold for dropping slow clients")
-    parser.add_argument('-ens', "--num_ensemble", type=int, default=4)
+    parser.add_argument('-ens', "--num_ensemble", type=int, default=1)
 
     # pFedMetaBayes
     parser.add_argument('-rank', "--rank", type=int, default=4)
@@ -487,6 +556,32 @@ if __name__ == "__main__":
     parser.add_argument('-Te', "--T_end", type=float, default=0.98)
     # GPFL
     parser.add_argument('-lamr', "--lamda_reg", type=float, default=0.0)
+
+    # FedGMM
+    parser.add_argument('-nl', "--n_learners", type=int, default=3,
+                        help="Number of learner models per client in FedGMM")
+    parser.add_argument('-ng', "--n_gmm", type=int, default=3,
+                        help="Number of GMM components in FedGMM")
+    parser.add_argument('-edim', "--embedding_dim", type=int, default=64,
+                        help="Autoencoder embedding dimension for FedGMM")
+
+    # FedSpectralFL (Spectral Co-Distillation)
+    parser.add_argument('-sdr', "--sd_ratio", type=float, default=0.4,
+                        help="Ratio for spectra truncation in SpectralFL (default: 0.4)")
+    parser.add_argument('-lg', "--lambda_g", type=float, default=0.3,
+                        help="Spectral regularizer coefficient for global model in SpectralFL (default: 0.3)")
+    parser.add_argument('-ll', "--lambda_l", type=float, default=0.4,
+                        help="Spectral regularizer coefficient for personal model in SpectralFL (default: 0.4)")
+
+    # FedPop
+    parser.add_argument('-ps', "--prior_sigma", type=float, default=0.54,
+                        help="Gaussian prior std for personal head in FedPop")
+    parser.add_argument('-nii', "--n_inner_iters", type=int, default=50,
+                        help="Number of SGLD inner iterations in FedPop")
+    parser.add_argument('-bi', "--burn_in", type=int, default=20,
+                        help="SGLD burn-in steps before collecting samples in FedPop")
+    parser.add_argument('-sglr', "--sgld_lr", type=float, default=0.05,
+                        help="SGLD learning rate for personal head in FedPop")
 
     args = parser.parse_args()
 

@@ -154,6 +154,74 @@ class FedAvgCNN(nn.Module):
 
 # ====================================================================================================================
 
+
+class TransformerBlock(nn.Module):
+    def __init__(self, dim, num_heads, mlp_ratio=4.0, drop=0.0):
+        super().__init__()
+        self.norm1 = nn.LayerNorm(dim)
+        self.attn = nn.MultiheadAttention(dim, num_heads, dropout=drop, batch_first=True)
+        self.norm2 = nn.LayerNorm(dim)
+        mlp_hidden = int(dim * mlp_ratio)
+        self.mlp = nn.Sequential(
+            nn.Linear(dim, mlp_hidden),
+            nn.GELU(),
+            nn.Linear(mlp_hidden, dim),
+        )
+
+    def forward(self, x):
+        residual = x
+        x = self.norm1(x)
+        x, _ = self.attn(x, x, x)
+        x = residual + x
+
+        residual = x
+        x = self.norm2(x)
+        x = self.mlp(x)
+        x = residual + x
+        return x
+
+
+class FedViT(nn.Module):
+    def __init__(self, num_classes=10, dim=256, in_channels=3, img_size=32,
+                 patch_size=4, depth=4, num_heads=4, mlp_ratio=2.0):
+        super().__init__()
+        self.dim = dim
+        self.num_patches = (img_size // patch_size) ** 2
+
+        self.patch_embed = nn.Conv2d(in_channels, dim, kernel_size=patch_size, stride=patch_size)
+
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, dim))
+        self.pos_embed = nn.Parameter(torch.zeros(1, self.num_patches + 1, dim))
+        nn.init.trunc_normal_(self.cls_token, std=0.02)
+        nn.init.trunc_normal_(self.pos_embed, std=0.02)
+
+        self.blocks = nn.ModuleList([
+            TransformerBlock(dim, num_heads, mlp_ratio)
+            for _ in range(depth)
+        ])
+
+        self.norm = nn.LayerNorm(dim)
+        self.head = nn.Linear(dim, num_classes)
+
+    def forward(self, x):
+        x = self.patch_embed(x)
+        x = x.flatten(2).transpose(1, 2)
+
+        cls_tokens = self.cls_token.expand(x.shape[0], -1, -1)
+        x = torch.cat([cls_tokens, x], dim=1)
+        x = x + self.pos_embed
+
+        for block in self.blocks:
+            x = block(x)
+
+        x = self.norm(x)
+        x = x[:, 0]
+        out = self.head(x)
+        return out
+
+
+# ====================================================================================================================
+
 # https://github.com/katsura-jp/fedavg.pytorch/blob/master/src/models/mlp.py
 class FedAvgMLP(nn.Module):
     def __init__(self, in_features=784, num_classes=10, hidden_dim=200):

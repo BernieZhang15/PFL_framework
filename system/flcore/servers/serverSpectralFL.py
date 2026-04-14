@@ -1,17 +1,15 @@
 import time
-import os
-import random
 from flcore.servers.serverbase import Server
-from flcore.clients.clientFourierFT import clientFourierFT
+from flcore.clients.clientSpectralFL import clientSpectralFL
 
 
-class FedFourierFT(Server):
+class FedSpectralFL(Server):
     def __init__(self, args, times):
         super().__init__(args, times)
 
         # select slow clients
         self.set_slow_clients()
-        self.set_clients(clientFourierFT)
+        self.set_clients(clientSpectralFL)
         self.selected_clients = None
 
         print(f"\nJoin ratio / total clients: {self.join_ratio} / {self.num_clients}")
@@ -21,42 +19,27 @@ class FedFourierFT(Server):
 
     def train(self):
         for i in range(self.global_rounds + 1):
-
             s_t = time.time()
-
-            # # Reduce local learning rate after 600 global rounds
-            # if i == 600:
-            #     print("\n[FedFourierFT] Reached round 600, set lr to 0.05 for all clients.")
-            #     self.learning_rate = 0.001
-            #     for client in self.clients:
-            #         client.learning_rate = 0.001
-            #         for param_group in client.optimizer.param_groups:
-            #             param_group['lr'] = 0.001
-
             self.selected_clients = self.select_clients()
             self.send_models()
 
             if i % self.eval_gap == 0:
                 print(f"\n-------------Round number: {i}-------------")
-                print("\nEvaluate model with multiple local updates")
+                print("\nEvaluate personalized models")
                 self.evaluate(i)
 
             for client in self.selected_clients:
+                # Step 1: Train global model with spectral distillation
                 client.train()
+                # Step 2: Train personal model with spectral distillation + proximal term
+                client.ptrain()
 
-            # if i == self.global_rounds:
-            #     rng = random.Random(self.seed + i)
-            #     chosen_client = rng.choice(self.selected_clients)
-            #     output_dir = os.path.join(self.save_folder_name, "fft_visuals")
-            #     print(
-            #         f"\n[FourierFT] Saving spectral matrices from client {chosen_client.id} at round {i}"
-            #     )
-            #     chosen_client.save_fft_spectra(round_idx=i, output_dir=output_dir)
-
+            # Only aggregate the global models (self.model), not personal models
             self.receive_models()
             self.aggregate_parameters()
+
             self.Budget.append(time.time() - s_t)
-            print('-'*25, 'time cost', '-'*25, self.Budget[-1])
+            print('-' * 25, 'time cost', '-' * 25, self.Budget[-1])
 
             if self.auto_break and self.check_done(acc_lss=[self.rs_test_acc], top_cnt=self.top_cnt):
                 break
@@ -64,18 +47,14 @@ class FedFourierFT(Server):
         print("\nBest accuracy.")
         print(max(self.rs_test_acc))
         print("\nAverage time cost per round.")
-        print(sum(self.Budget[1:])/len(self.Budget[1:]))
+        print(sum(self.Budget[1:]) / len(self.Budget[1:]))
 
         self.save_results()
         self.save_global_model()
 
         if self.num_new_clients > 0:
             self.eval_new_clients = True
-            self.set_new_clients(clientFourierFT)
+            self.set_new_clients(clientSpectralFL)
             print(f"\n-------------Fine tuning round-------------")
             print("\nEvaluate new clients")
             self.evaluate(self.global_rounds + 1)
-
-
-
-

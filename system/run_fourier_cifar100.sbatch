@@ -26,11 +26,13 @@ MAIN=main.py
 LR=0.001
 FR=1.0
 SL=0.9
-SEEDS=(
-    $((RANDOM % 100000))
-    $((RANDOM % 100000))
-    $((RANDOM % 100000))
-)
+FLR=10
+SEEDS=(576)
+# SEEDS=(
+#     $((RANDOM % 100000))
+#     $((RANDOM % 100000))
+#     $((RANDOM % 100000))
+# )
 LOGDIR="./FedFourierFT/slurm-${SLURM_JOB_ID}"
 mkdir -p "$LOGDIR"
 
@@ -57,7 +59,7 @@ run_experiment() {
     local logfile="${LOGDIR}/${dataset}-seed${seed}.log"
     
     echo "[GPU ${gpu_id}] Starting: dataset=${dataset}, seed=${seed}"
-    $PY "$MAIN" -data "$dataset" -lr "$LR" -fr "$FR" -sl "$SL" -seed "$seed" -nb 100 -did "$gpu_id" > "$logfile" 2>&1
+    $PY "$MAIN" -data "$dataset" -lr "$LR" -fr "$FR" -dlrr "$FLR" -sl "$SL" -seed "$seed" -nb 100 -did "$gpu_id" > "$logfile" 2>&1
     local exit_code=$?
     echo "[GPU ${gpu_id}] Finished: dataset=${dataset}, seed=${seed}, exit_code=${exit_code}"
     return $exit_code

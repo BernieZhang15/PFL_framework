@@ -26,11 +26,11 @@ MAIN=main.py
 LR=0.001
 FLR=10
 FR=1.0
-FB=false
+FB=true
 SEEDS=(
-    573
-    592
-    567
+    $((RANDOM % 100000))
+    $((RANDOM % 100000))
+    $((RANDOM % 100000))
 )
 LOGDIR="./FedFourierFT_cifar100_no_bias/slurm-${SLURM_JOB_ID}"
 mkdir -p "$LOGDIR"
