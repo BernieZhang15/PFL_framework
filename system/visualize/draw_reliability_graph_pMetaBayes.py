@@ -1,0 +1,166 @@
+import os
+import random
+import numpy as np
+import matplotlib.pyplot as plt
+from collections import OrderedDict
+from torch.utils.data import DataLoader
+from flcore.trainmodel.be_models import *
+from utils.data_utils import read_client_data
+from torch.utils.tensorboard import SummaryWriter
+from plot_reliability_diagram import make_model_diagrams
+from torchmetrics.functional.classification import multiclass_calibration_error
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+def set_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+
+algorithm = "FedMetaBayes"
+dataset = "Cifar10-pat-2"
+model_path = os.path.join('models', dataset, algorithm + "_server_187" + ".pt")
+model = torch.load(model_path)
+model = model.to(device)
+
+def get_next_batch(dataloader):
+    iter_dataloader = iter(dataloader)
+    try:
+        x_input, label = next(iter_dataloader)
+    except StopIteration:
+        iter_trainloader = iter(dataloader)
+        x_input, label = next(iter_trainloader)
+    return x_input, label
+
+
+def fine_tune(net, trainloader, testloader, train_nums, update_step=None, learning_rate=None):
+
+    lr_matrix = OrderedDict((n, p) for (n, p) in net.named_parameters() if not "W" in n)
+
+    for e in range(update_step):
+
+        net.train()
+
+        x, y = get_next_batch(trainloader)
+        x, y = x.to(device), y.to(device)
+
+        outputs, kl = net(x, lr_matrix)
+
+        outputs = F.softmax(outputs, dim=1).reshape(4, x.shape[0], 10)
+        outputs = torch.log(torch.mean(outputs, dim=0))
+
+        # Calculate NLL loss
+        nll_loss = F.nll_loss(outputs, y)
+
+        loss = nll_loss + kl / train_nums
+
+        grads = torch.autograd.grad(loss, lr_matrix.values())
+        lr_matrix = OrderedDict((n, p - learning_rate * grad) for ((n, p), grad) in zip(lr_matrix.items(), grads))
+
+    return evaluate(net, lr_matrix, testloader)
+
+
+def evaluate(net, lr_matrices, dataloader):
+
+    net.eval()
+
+    eval_cor = 0
+    eval_num = 0
+    y_prob = []
+    y_true = []
+
+    with torch.no_grad():
+        for x, y in dataloader:
+            x, y = x.to(device), y.to(device)
+
+            outputs, kl = net(x, lr_matrices)
+
+            outputs = F.softmax(outputs, dim=1).reshape(4, x.shape[0], 10)
+            outputs = torch.mean(outputs, dim=0)
+
+            eval_cor += (torch.sum(torch.argmax(outputs, dim=1) == y)).item()
+            eval_num += y.shape[0]
+
+            y_prob.append(outputs.detach().cpu())
+            y_true.append(y.cpu())
+
+        y_prob = torch.cat(y_prob, axis=0)
+        y_true = torch.cat(y_true, axis=0)
+
+        test_ece = multiclass_calibration_error(y_prob, y_true, num_classes=10, n_bins=15, norm="l1")
+        test_mce = multiclass_calibration_error(y_prob, y_true, num_classes=10, n_bins=15, norm="max")
+
+        return eval_cor / eval_num, test_ece, test_mce, y_prob, y_true
+
+ood_test_accs = [[] for _ in range(10)]
+ood_test_eces = [[] for _ in range(10)]
+ood_test_mces = [[] for _ in range(10)]
+
+id_test_accs = [[] for _ in range(40)]
+id_test_eces = [[] for _ in range(40)]
+id_test_mces = [[] for _ in range(40)]
+
+c_start = 0
+c_end = 40
+for c in range(c_start, c_end):
+
+    print("Start evaluating client {}".format(c))
+
+    train_data = read_client_data(dataset, c, is_train=True)
+    train_loader = DataLoader(train_data, batch_size=32, shuffle=True)
+
+    test_data = read_client_data(dataset, c, is_train=False)
+    test_loader = DataLoader(test_data, batch_size=128, shuffle=False)
+
+    for _, s in enumerate([890, 355, 236, 865, 954, 854, 602, 91, 56, 82]):
+
+        set_seed(s)
+
+        stats = fine_tune(model, train_loader, test_loader, len(train_data), update_step=20, learning_rate=0.005)
+
+        if c >= 40:
+            ood_test_accs[c - 40].append(stats[0])
+            ood_test_eces[c - 40].append(stats[1])
+            ood_test_mces[c - 40].append(stats[2])
+        else:
+            id_test_accs[c].append(stats[0])
+            id_test_eces[c].append(stats[1])
+            id_test_mces[c].append(stats[2])
+
+
+if c_start < 40:
+    id_test_accs = np.array(id_test_accs)
+    id_test_eces = np.array(id_test_eces)
+    id_test_mces = np.array(id_test_mces)
+
+    id_mean_acc = np.mean(id_test_accs, axis=1)
+    id_mean_ece = np.mean(id_test_eces, axis=1)
+    id_mean_mce = np.mean(id_test_mces, axis=1)
+
+    print(id_mean_acc)
+    print(id_mean_ece)
+    print(id_mean_mce)
+
+#
+# if c_end > 40:
+#     ood_test_accs = np.array(ood_test_accs)
+#     ood_test_eces = np.array(ood_test_eces)
+#     ood_test_mces = np.array(ood_test_mces)
+#
+#     ood_mean_acc = np.mean(ood_test_accs, axis=1)
+#     ood_mean_ece = np.mean(ood_test_eces, axis=1)
+#     ood_mean_mce = np.mean(ood_test_mces, axis=1)
+#
+#     print(ood_mean_acc)
+#     print(ood_mean_ece)
+#     print(ood_mean_mce)
+
+
+
+
+
+
+
+
+

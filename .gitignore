@@ -13,3 +13,15 @@ events.out.tfevents*
 *.log
 *.out
 *.err
+*.pdf
+*.png
+*.csv
+*.npy
+*.zip
+*.tar.gz
+*.sh
+*.py.bak
+meta
+test
+train
+file.txt*
